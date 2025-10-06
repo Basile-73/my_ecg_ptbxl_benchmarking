@@ -42,3 +42,10 @@ conda activate py386_from_file
 # Install pip dependencies from requirements file
 pip install -r pip-requirements.txt
 ```
+
+Afterwards install the following packages using pip.
+
+```bash
+pip install "scipy<1.12"
+pip install keras==2.15.0
+```
