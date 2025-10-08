@@ -125,6 +125,21 @@ fastai_xresnet1d101,test,0.925,0.887,0.038,0.918,0.930,0.879,0.895
 - **Medium drop (0.04-0.06)**: Average robustness
 - **Large drop (>0.06)**: Poor noise robustness ✗
 
+### Visualizations
+
+**Automatically generated plots in `output/exp0_noise/results/`:**
+
+1. **`noise_robustness_summary.png`** - Comprehensive 4-panel figure:
+   - Clean vs Noisy AUC with confidence intervals
+   - Performance degradation (AUC drop) by model
+   - Scatter plot of baseline performance vs robustness
+   - Confidence interval widths comparison
+
+2. **`noise_robustness_simple.png`** - Simplified presentation-ready plot:
+   - Side-by-side comparison of clean vs noisy performance
+   - Clear labels and annotations
+   - Color-coded for easy interpretation
+
 ### Detailed Results
 Each model has 4 detailed result files in `output/exp0_noise/models/{model_name}/results/`:
 - `val_clean_results.csv` - Validation set, clean data
@@ -164,7 +179,9 @@ output/exp0_noise/
 │           ├── test_clean_results.csv
 │           └── test_noisy_results.csv
 └── results/
-    └── noise_robustness_summary.csv
+    ├── noise_robustness_summary.csv      # Summary table
+    ├── noise_robustness_summary.png      # Comprehensive visualization
+    └── noise_robustness_simple.png       # Presentation-ready plot
 ```
 
 ## Noise Configuration

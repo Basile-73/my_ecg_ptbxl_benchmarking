@@ -9,6 +9,10 @@ import numpy as np
 import multiprocessing
 from itertools import repeat
 from pathlib import Path
+import matplotlib
+matplotlib.use('Agg')  # Use non-interactive backend
+import matplotlib.pyplot as plt
+import seaborn as sns
 
 from ecg_noise_factory.noise import NoiseFactory
 
@@ -255,6 +259,194 @@ class NoiseRobustnessExperiment():
             raise NotImplementedError(f"Model type for {modelname} not yet implemented. "
                                       f"Supported: fastai_*, wavelet_*")
 
+    def _plot_results(self, summary_df):
+        """
+        Create visualization of noise robustness results.
+        Generates multiple plots showing model performance on clean vs noisy data.
+        """
+        # Set style
+        sns.set_style("whitegrid")
+        plt.rcParams['figure.figsize'] = (14, 10)
+
+        # Filter for test set only
+        test_df = summary_df[summary_df['split'] == 'test'].copy()
+
+        if len(test_df) == 0:
+            print("Warning: No test results to plot")
+            return
+
+        # Sort by AUC drop (most robust first)
+        test_df = test_df.sort_values('auc_drop')
+
+        # Create figure with subplots
+        fig, axes = plt.subplots(2, 2, figsize=(16, 12))
+        fig.suptitle('ECG Model Noise Robustness Analysis', fontsize=16, fontweight='bold', y=0.995)
+
+        # Plot 1: Clean vs Noisy AUC with error bars
+        ax1 = axes[0, 0]
+        x = np.arange(len(test_df))
+        width = 0.35
+
+        # Clean AUC bars
+        clean_bars = ax1.bar(x - width/2, test_df['clean_auc'], width,
+                            label='Clean', color='#2ecc71', alpha=0.8, edgecolor='black', linewidth=1)
+        # Clean CI error bars
+        clean_err = [test_df['clean_auc'] - test_df['clean_auc_ci_lower'],
+                     test_df['clean_auc_ci_upper'] - test_df['clean_auc']]
+        ax1.errorbar(x - width/2, test_df['clean_auc'], yerr=clean_err,
+                    fmt='none', ecolor='darkgreen', capsize=3, capthick=2)
+
+        # Noisy AUC bars
+        noisy_bars = ax1.bar(x + width/2, test_df['noisy_auc'], width,
+                            label='Noisy', color='#e74c3c', alpha=0.8, edgecolor='black', linewidth=1)
+        # Noisy CI error bars
+        noisy_err = [test_df['noisy_auc'] - test_df['noisy_auc_ci_lower'],
+                     test_df['noisy_auc_ci_upper'] - test_df['noisy_auc']]
+        ax1.errorbar(x + width/2, test_df['noisy_auc'], yerr=noisy_err,
+                    fmt='none', ecolor='darkred', capsize=3, capthick=2)
+
+        ax1.set_xlabel('Model', fontsize=11, fontweight='bold')
+        ax1.set_ylabel('AUC (macro)', fontsize=11, fontweight='bold')
+        ax1.set_title('Model Performance: Clean vs Noisy Data', fontsize=12, fontweight='bold', pad=10)
+        ax1.set_xticks(x)
+        ax1.set_xticklabels(test_df['model'], rotation=45, ha='right', fontsize=9)
+        ax1.legend(fontsize=10, loc='lower left')
+        ax1.grid(True, alpha=0.3, axis='y')
+        ax1.set_ylim([max(0.5, test_df[['clean_auc', 'noisy_auc']].min().min() - 0.05), 1.0])
+
+        # Plot 2: AUC Drop (Performance Degradation)
+        ax2 = axes[0, 1]
+        colors = ['#27ae60' if drop < 0.04 else '#f39c12' if drop < 0.06 else '#c0392b'
+                  for drop in test_df['auc_drop']]
+        bars2 = ax2.barh(x, test_df['auc_drop'], color=colors, alpha=0.8, edgecolor='black', linewidth=1)
+
+        ax2.set_yticks(x)
+        ax2.set_yticklabels(test_df['model'], fontsize=9)
+        ax2.set_xlabel('AUC Drop (Clean - Noisy)', fontsize=11, fontweight='bold')
+        ax2.set_title('Performance Degradation Due to Noise', fontsize=12, fontweight='bold', pad=10)
+        ax2.grid(True, alpha=0.3, axis='x')
+
+        # Add threshold lines
+        ax2.axvline(x=0.04, color='green', linestyle='--', alpha=0.5, linewidth=2, label='Good (<0.04)')
+        ax2.axvline(x=0.06, color='orange', linestyle='--', alpha=0.5, linewidth=2, label='Average (<0.06)')
+        ax2.legend(fontsize=9, loc='lower right')
+
+        # Add value labels on bars
+        for i, (idx, row) in enumerate(test_df.iterrows()):
+            ax2.text(row['auc_drop'] + 0.002, i, f"{row['auc_drop']:.4f}",
+                    va='center', fontsize=8, fontweight='bold')
+
+        # Plot 3: Scatter plot - Clean AUC vs Noise Robustness
+        ax3 = axes[1, 0]
+        scatter = ax3.scatter(test_df['clean_auc'], test_df['auc_drop'],
+                             s=200, c=test_df['auc_drop'], cmap='RdYlGn_r',
+                             alpha=0.7, edgecolors='black', linewidth=1.5)
+
+        # Add model labels
+        for idx, row in test_df.iterrows():
+            model_short = row['model'].replace('fastai_', '').replace('wavelet_', '')[:15]
+            ax3.annotate(model_short, (row['clean_auc'], row['auc_drop']),
+                        fontsize=8, ha='center', va='bottom',
+                        bbox=dict(boxstyle='round,pad=0.3', facecolor='white', alpha=0.7, edgecolor='gray'))
+
+        ax3.set_xlabel('Clean AUC', fontsize=11, fontweight='bold')
+        ax3.set_ylabel('AUC Drop', fontsize=11, fontweight='bold')
+        ax3.set_title('Baseline Performance vs Noise Robustness', fontsize=12, fontweight='bold', pad=10)
+        ax3.grid(True, alpha=0.3)
+
+        # Add colorbar
+        cbar = plt.colorbar(scatter, ax=ax3)
+        cbar.set_label('AUC Drop', fontsize=10)
+
+        # Add quadrant lines
+        median_clean = test_df['clean_auc'].median()
+        median_drop = test_df['auc_drop'].median()
+        ax3.axvline(x=median_clean, color='gray', linestyle=':', alpha=0.5)
+        ax3.axhline(y=median_drop, color='gray', linestyle=':', alpha=0.5)
+
+        # Plot 4: Confidence Interval Widths
+        ax4 = axes[1, 1]
+        clean_ci_width = test_df['clean_auc_ci_upper'] - test_df['clean_auc_ci_lower']
+        noisy_ci_width = test_df['noisy_auc_ci_upper'] - test_df['noisy_auc_ci_lower']
+
+        x4 = np.arange(len(test_df))
+        width4 = 0.35
+        ax4.bar(x4 - width4/2, clean_ci_width, width4, label='Clean',
+               color='#3498db', alpha=0.8, edgecolor='black', linewidth=1)
+        ax4.bar(x4 + width4/2, noisy_ci_width, width4, label='Noisy',
+               color='#9b59b6', alpha=0.8, edgecolor='black', linewidth=1)
+
+        ax4.set_xlabel('Model', fontsize=11, fontweight='bold')
+        ax4.set_ylabel('CI Width (90%)', fontsize=11, fontweight='bold')
+        ax4.set_title('Confidence Interval Widths (Uncertainty)', fontsize=12, fontweight='bold', pad=10)
+        ax4.set_xticks(x4)
+        ax4.set_xticklabels(test_df['model'], rotation=45, ha='right', fontsize=9)
+        ax4.legend(fontsize=10)
+        ax4.grid(True, alpha=0.3, axis='y')
+
+        # Adjust layout
+        plt.tight_layout()
+
+        # Save figure
+        output_path = self.outputfolder + self.experiment_name + '/results/noise_robustness_summary.png'
+        plt.savefig(output_path, dpi=300, bbox_inches='tight', facecolor='white')
+        plt.close()
+
+        print(f"\n✓ Visualization saved to: {output_path}")
+
+        # Create a second simplified plot for presentations
+        self._plot_simple_summary(test_df)
+
+    def _plot_simple_summary(self, test_df):
+        """
+        Create a simplified, presentation-ready plot.
+        """
+        fig, ax = plt.subplots(1, 1, figsize=(12, 6))
+
+        x = np.arange(len(test_df))
+        width = 0.35
+
+        # Clean vs Noisy bars
+        ax.bar(x - width/2, test_df['clean_auc'], width,
+              label='Clean Data', color='#2ecc71', alpha=0.9, edgecolor='black', linewidth=1.5)
+        ax.bar(x + width/2, test_df['noisy_auc'], width,
+              label='Noisy Data', color='#e74c3c', alpha=0.9, edgecolor='black', linewidth=1.5)
+
+        # Add value labels on top of bars
+        for i, (idx, row) in enumerate(test_df.iterrows()):
+            ax.text(i - width/2, row['clean_auc'] + 0.01, f"{row['clean_auc']:.3f}",
+                   ha='center', va='bottom', fontsize=9, fontweight='bold')
+            ax.text(i + width/2, row['noisy_auc'] + 0.01, f"{row['noisy_auc']:.3f}",
+                   ha='center', va='bottom', fontsize=9, fontweight='bold')
+            # Add drop annotation
+            ax.text(i, row['noisy_auc'] - 0.03, f"↓{row['auc_drop']:.3f}",
+                   ha='center', va='top', fontsize=8, color='red', fontweight='bold')
+
+        ax.set_xlabel('Model', fontsize=13, fontweight='bold')
+        ax.set_ylabel('AUC (macro)', fontsize=13, fontweight='bold')
+        ax.set_title('ECG Model Performance: Clean vs Noisy Data',
+                    fontsize=15, fontweight='bold', pad=15)
+        ax.set_xticks(x)
+        ax.set_xticklabels(test_df['model'], rotation=45, ha='right', fontsize=10)
+        ax.legend(fontsize=12, loc='lower left', framealpha=0.9)
+        ax.grid(True, alpha=0.3, axis='y', linestyle='--')
+        ax.set_ylim([max(0.5, test_df[['clean_auc', 'noisy_auc']].min().min() - 0.05), 1.05])
+
+        # Add note about robustness
+        note_text = "Lower AUC drop indicates better noise robustness"
+        ax.text(0.98, 0.02, note_text, transform=ax.transAxes,
+               fontsize=9, ha='right', va='bottom', style='italic',
+               bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
+
+        plt.tight_layout()
+
+        # Save
+        output_path = self.outputfolder + self.experiment_name + '/results/noise_robustness_simple.png'
+        plt.savefig(output_path, dpi=300, bbox_inches='tight', facecolor='white')
+        plt.close()
+
+        print(f"✓ Simple plot saved to: {output_path}")
+
     def evaluate(self, n_bootstraping_samples=100, n_jobs=20):
         """
         Evaluate models on both clean and noisy data using bootstrapping for confidence intervals.
@@ -417,5 +609,14 @@ class NoiseRobustnessExperiment():
         print(summary_df.to_string(index=False))
         print("="*80)
         print(f"\nFull results saved to: {self.outputfolder + self.experiment_name + '/results/'}")
+
+        # Generate visualizations
+        print("\nGenerating visualizations...")
+        try:
+            self._plot_results(summary_df)
+        except Exception as e:
+            print(f"Warning: Could not generate plots: {e}")
+            import traceback
+            traceback.print_exc()
 
         return summary_df
