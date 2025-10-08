@@ -44,7 +44,7 @@ class SCP_Experiment():
         # Select relevant data and convert to one-hot
         self.data, self.labels, self.Y, _ = utils.select_data(self.data, self.labels, self.task, self.min_samples, self.outputfolder+self.experiment_name+'/data/')
         self.input_shape = self.data[0].shape
-        
+
         # 10th fold for testing (9th for now)
         self.X_test = self.data[self.labels.strat_fold == self.test_fold]
         self.y_test = self.Y[self.labels.strat_fold == self.test_fold]
@@ -140,26 +140,26 @@ class SCP_Experiment():
 
         # get labels
         y_train = np.load(self.outputfolder+self.experiment_name+'/data/y_train.npy', allow_pickle=True)
-        #y_val = np.load(self.outputfolder+self.experiment_name+'/data/y_val.npy', allow_pickle=True)
+        y_val = np.load(self.outputfolder+self.experiment_name+'/data/y_val.npy', allow_pickle=True)
         y_test = np.load(self.outputfolder+self.experiment_name+'/data/y_test.npy', allow_pickle=True)
 
         # if bootstrapping then generate appropriate samples for each
         if bootstrap_eval:
             if not dumped_bootstraps:
-                #train_samples = np.array(utils.get_appropriate_bootstrap_samples(y_train, n_bootstraping_samples))
+                train_samples = np.array(utils.get_appropriate_bootstrap_samples(y_train, n_bootstraping_samples))
                 test_samples = np.array(utils.get_appropriate_bootstrap_samples(y_test, n_bootstraping_samples))
-                #val_samples = np.array(utils.get_appropriate_bootstrap_samples(y_val, n_bootstraping_samples))
+                val_samples = np.array(utils.get_appropriate_bootstrap_samples(y_val, n_bootstraping_samples))
             else:
                 test_samples = np.load(self.outputfolder+self.experiment_name+'/test_bootstrap_ids.npy', allow_pickle=True)
         else:
-            #train_samples = np.array([range(len(y_train))])
+            train_samples = np.array([range(len(y_train))])
             test_samples = np.array([range(len(y_test))])
-            #val_samples = np.array([range(len(y_val))])
+            val_samples = np.array([range(len(y_val))])
 
         # store samples for future evaluations
-        #train_samples.dump(self.outputfolder+self.experiment_name+'/train_bootstrap_ids.npy')
+        train_samples.dump(self.outputfolder+self.experiment_name+'/train_bootstrap_ids.npy')
         test_samples.dump(self.outputfolder+self.experiment_name+'/test_bootstrap_ids.npy')
-        #val_samples.dump(self.outputfolder+self.experiment_name+'/val_bootstrap_ids.npy')
+        val_samples.dump(self.outputfolder+self.experiment_name+'/val_bootstrap_ids.npy')
 
         # iterate over all models fitted so far
         for m in sorted(os.listdir(self.outputfolder+self.experiment_name+'/models')):
@@ -169,7 +169,7 @@ class SCP_Experiment():
 
             # load predictions
             y_train_pred = np.load(mpath+'y_train_pred.npy', allow_pickle=True)
-            #y_val_pred = np.load(mpath+'y_val_pred.npy', allow_pickle=True)
+            y_val_pred = np.load(mpath+'y_val_pred.npy', allow_pickle=True)
             y_test_pred = np.load(mpath+'y_test_pred.npy', allow_pickle=True)
 
             if self.experiment_name == 'exp_ICBEB':
@@ -180,42 +180,43 @@ class SCP_Experiment():
 
             pool = multiprocessing.Pool(n_jobs)
 
-            # tr_df = pd.concat(pool.starmap(utils.generate_results, zip(train_samples, repeat(y_train), repeat(y_train_pred), repeat(thresholds))))
-            # tr_df_point = utils.generate_results(range(len(y_train)), y_train, y_train_pred, thresholds)
-            # tr_df_result = pd.DataFrame(
-            #     np.array([
-            #         tr_df_point.mean().values, 
-            #         tr_df.mean().values,
-            #         tr_df.quantile(0.05).values,
-            #         tr_df.quantile(0.95).values]), 
-            #     columns=tr_df.columns,
-            #     index=['point', 'mean', 'lower', 'upper'])
+            tr_df = pd.concat(pool.starmap(utils.generate_results, zip(train_samples, repeat(y_train), repeat(y_train_pred), repeat(thresholds))))
+            tr_df_point = utils.generate_results(range(len(y_train)), y_train, y_train_pred, thresholds)
+            tr_df_result = pd.DataFrame(
+                np.array([
+                    tr_df_point.mean().values,
+                    tr_df.mean().values,
+                    tr_df.quantile(0.05).values,
+                    tr_df.quantile(0.95).values]),
+                columns=tr_df.columns,
+                index=['point', 'mean', 'lower', 'upper'])
 
             te_df = pd.concat(pool.starmap(utils.generate_results, zip(test_samples, repeat(y_test), repeat(y_test_pred), repeat(thresholds))))
             te_df_point = utils.generate_results(range(len(y_test)), y_test, y_test_pred, thresholds)
             te_df_result = pd.DataFrame(
                 np.array([
-                    te_df_point.mean().values, 
+                    te_df_point.mean().values,
                     te_df.mean().values,
                     te_df.quantile(0.05).values,
-                    te_df.quantile(0.95).values]), 
-                columns=te_df.columns, 
+                    te_df.quantile(0.95).values]),
+                columns=te_df.columns,
                 index=['point', 'mean', 'lower', 'upper'])
 
-            # val_df = pd.concat(pool.starmap(utils.generate_results, zip(val_samples, repeat(y_val), repeat(y_val_pred), repeat(thresholds))))
-            # val_df_point = utils.generate_results(range(len(y_val)), y_val, y_val_pred, thresholds)
-            # val_df_result = pd.DataFrame(
-            #     np.array([
-            #         val_df_point.mean().values, 
-            #         val_df.mean().values,
-            #         val_df.quantile(0.05).values,
-            #         val_df.quantile(0.95).values]), 
-            #     columns=val_df.columns, 
-            #     index=['point', 'mean', 'lower', 'upper'])
+            val_df = pd.concat(pool.starmap(utils.generate_results, zip(val_samples, repeat(y_val), repeat(y_val_pred), repeat(thresholds))))
+            val_df_point = utils.generate_results(range(len(y_val)), y_val, y_val_pred, thresholds)
+            val_df_result = pd.DataFrame(
+                np.array([
+                    val_df_point.mean().values,
+                    val_df.mean().values,
+                    val_df.quantile(0.05).values,
+                    val_df.quantile(0.95).values]),
+                columns=val_df.columns,
+                index=['point', 'mean', 'lower', 'upper'])
 
             pool.close()
 
             # dump results
-            #tr_df_result.to_csv(rpath+'tr_results.csv')
-            #val_df_result.to_csv(rpath+'val_results.csv')
+            tr_df_result.to_csv(rpath+'tr_results.csv')
+            val_df_result.to_csv(rpath+'val_results.csv')
             te_df_result.to_csv(rpath+'te_results.csv')
+            print(f"Saved results to: {rpath+'tr_results.csv'}")
