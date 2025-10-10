@@ -1,0 +1,5 @@
+SNR: # acceptable ranges according to Hu et al. 2023
+  bw: 5 # 0 - 5
+  ma: 10 # 5 - 10
+  em: 15 # 10 - 15
+  AWGN: 25 # 20 - 25

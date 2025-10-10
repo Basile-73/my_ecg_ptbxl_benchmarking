@@ -12,5 +12,11 @@ __pycache__
 **/*.fls
 **/*.fdb_latexmk
 
+# Jupyter Notebooks
 .ipynb_checkpoints
+*.ipynb
+
+# Large folders or files that change frequently
 data/
+output/
+ecg_noise/
