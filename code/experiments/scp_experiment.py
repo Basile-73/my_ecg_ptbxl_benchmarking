@@ -125,12 +125,12 @@ class SCP_Experiment():
             os.makedirs(ensemblepath+'results/')
         # load all predictions
         ensemble_train, ensemble_val, ensemble_test = [],[],[]
-        for model_description in os.listdir(self.outputfolder+self.experiment_name+'/models/'):
-            if not model_description in ['ensemble', 'naive']:
-                mpath = self.outputfolder+self.experiment_name+'/models/'+model_description+'/'
-                ensemble_train.append(np.load(mpath+'y_train_pred.npy', allow_pickle=True))
-                ensemble_val.append(np.load(mpath+'y_val_pred.npy', allow_pickle=True))
-                ensemble_test.append(np.load(mpath+'y_test_pred.npy', allow_pickle=True))
+        for model_description in self.models:
+            modelname = model_description['modelname']
+            mpath = self.outputfolder+self.experiment_name+'/models/'+modelname+'/'
+            ensemble_train.append(np.load(mpath+'y_train_pred.npy', allow_pickle=True))
+            ensemble_val.append(np.load(mpath+'y_val_pred.npy', allow_pickle=True))
+            ensemble_test.append(np.load(mpath+'y_test_pred.npy', allow_pickle=True))
         # dump mean predictions
         np.array(ensemble_train).mean(axis=0).dump(ensemblepath + 'y_train_pred.npy')
         np.array(ensemble_test).mean(axis=0).dump(ensemblepath + 'y_test_pred.npy')
@@ -162,7 +162,8 @@ class SCP_Experiment():
         val_samples.dump(self.outputfolder+self.experiment_name+'/val_bootstrap_ids.npy')
 
         # iterate over all models fitted so far
-        for m in sorted(os.listdir(self.outputfolder+self.experiment_name+'/models')):
+        model_names = [model_description['modelname'] for model_description in self.models] + ['naive', 'ensemble']
+        for m in sorted(model_names):
             print(m)
             mpath = self.outputfolder+self.experiment_name+'/models/'+m+'/'
             rpath = self.outputfolder+self.experiment_name+'/models/'+m+'/results/'
