@@ -1,0 +1,3 @@
+[submodule "code/denoising/ECG-processing"]
+	path = code/denoising/ECG-processing
+	url = https://github.com/Basile-73/ECG-processing.git
