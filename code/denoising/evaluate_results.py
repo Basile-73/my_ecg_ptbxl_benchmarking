@@ -19,6 +19,7 @@ import seaborn as sns
 
 from denoising_utils.utils import calculate_snr, calculate_rmse
 from denoising_utils.qui_plot import qui_plot
+from denoising_utils.rmse_analysis import analyze_rmse_variance
 from ecg_noise_factory.noise import NoiseFactory
 
 
@@ -318,6 +319,9 @@ def main():
     # Load clean test data
     clean_test = np.load(os.path.join(exp_folder, 'data', 'clean_test.npy'))
 
+    # Load clean validation data (for RMSE analysis)
+    clean_val = np.load(os.path.join(exp_folder, 'data', 'clean_val.npy'))
+
     # Initialize NoiseFactory with 'eval' mode to avoid data leakage
     print("\nInitializing NoiseFactory with 'eval' mode (no data leakage)...")
     noise_data_path = os.path.join(os.path.dirname(__file__), '../../ecg_noise/data')
@@ -387,6 +391,10 @@ def main():
         print("\nGenerating qui_plot (multi-noise comparison)...")
         noise_configs = config['evaluation']['qui_plot']['noise_configs']
         qui_plot(noise_configs, exp_folder, config, clean_test, model_names)
+
+        # Generate RMSE variance analysis (to understand why RMSE has high variance)
+        print("\nGenerating RMSE variance analysis...")
+        analyze_rmse_variance(noise_configs, exp_folder, config, clean_val, model_names)
 
     # Generate PDF report
     if args.report:
