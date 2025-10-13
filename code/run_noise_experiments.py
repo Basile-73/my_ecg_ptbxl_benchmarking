@@ -153,7 +153,7 @@ def get_available_models(output_folder, base_experiment):
 
     models = [
         d.name for d in base_models_path.iterdir()
-        if d.is_dir() and d.name not in ['naive', 'ensemble']
+        if d.is_dir() and d.name not in ['naive', 'ensemble', 'Wavelet+NN']
     ]
 
     return sorted(models)
