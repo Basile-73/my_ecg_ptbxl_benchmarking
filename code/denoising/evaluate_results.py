@@ -18,6 +18,7 @@ from matplotlib.backends.backend_pdf import PdfPages
 import seaborn as sns
 
 from denoising_utils.utils import calculate_snr, calculate_rmse
+from denoising_utils.qui_plot import qui_plot
 from ecg_noise_factory.noise import NoiseFactory
 
 
@@ -94,32 +95,65 @@ def compute_summary(results_df):
 
 
 def plot_comparison(summary_df, results_df, exp_folder):
-    """Create comparison plots."""
+    """Create comparison plots with Stage1/Stage2 grouping."""
     sns.set_style("whitegrid")
 
-    fig = plt.figure(figsize=(16, 10))
-    gs = gridspec.GridSpec(2, 2, figure=fig, hspace=0.3, wspace=0.3)
-    fig.suptitle('ECG Denoising Results', fontsize=16, fontweight='bold')
+    fig = plt.figure(figsize=(16, 12))
+    gs = gridspec.GridSpec(2, 2, figure=fig, hspace=0.4, wspace=0.3)
+    fig.suptitle('ECG Denoising Results', fontsize=16, fontweight='bold', y=0.98)
 
     models = summary_df['model'].unique()
+
+    # Determine Stage1 vs Stage2 and assign colors
+    colors = []
+    stage_types = []
+    for model in models:
+        if 'drnet' in model.lower() or 'stage2' in model.lower():
+            stage_types.append('stage2')
+            # Extract base model name (e.g., 'fcn' from 'drnet_fcn')
+            if '_' in model:
+                base = model.split('_')[-1]
+            else:
+                base = model
+            # Assign darker shade for stage2
+            if 'fcn' in base.lower():
+                colors.append('#1f77b4')  # Darker blue for fcn stage2
+            elif 'unet' in base.lower():
+                colors.append('#d62728')  # Darker red for unet stage2
+            elif 'imunet' in base.lower():
+                colors.append('#2ca02c')  # Darker green for imunet stage2
+            else:
+                colors.append('#9467bd')  # Darker purple for other stage2
+        else:
+            stage_types.append('stage1')
+            # Assign lighter shade for stage1
+            if 'fcn' in model.lower():
+                colors.append('#aec7e8')  # Light blue for fcn stage1
+            elif 'unet' in model.lower():
+                colors.append('#ff9896')  # Light red for unet stage1
+            elif 'imunet' in model.lower():
+                colors.append('#98df8a')  # Light green for imunet stage1
+            else:
+                colors.append('#c5b0d5')  # Light purple for other stage1
+
     x = np.arange(len(models))
 
     # Plot 1: SNR Improvement
     ax1 = fig.add_subplot(gs[0, 0])
     means = summary_df['mean_snr_improvement_db'].values
     stds = summary_df['std_snr_improvement_db'].values
-    ax1.bar(x, means, yerr=stds, capsize=5, color='#2ecc71', alpha=0.8,
-           edgecolor='black', linewidth=1)
+    bars = ax1.bar(x, means, yerr=stds, capsize=5, color=colors, alpha=0.8,
+                   edgecolor='black', linewidth=1)
     ax1.set_xlabel('Model', fontsize=12, fontweight='bold')
     ax1.set_ylabel('SNR Improvement (dB)', fontsize=12, fontweight='bold')
-    ax1.set_title('SNR Improvement by Model', fontsize=13, fontweight='bold')
+    ax1.set_title('SNR Improvement by Model', fontsize=13, fontweight='bold', pad=10)
     ax1.set_xticks(x)
-    ax1.set_xticklabels(models, rotation=45, ha='right')
+    ax1.set_xticklabels(models, rotation=45, ha='right', fontsize=9)
     ax1.grid(True, alpha=0.3, axis='y')
 
     # Add value labels
     for i, (m, s) in enumerate(zip(means, stds)):
-        ax1.text(i, m + s + 0.5, f'{m:.2f}±{s:.2f}', ha='center', fontsize=9)
+        ax1.text(i, m + s + 0.5, f'{m:.2f}±{s:.2f}', ha='center', fontsize=8)
 
     # Plot 2: RMSE Comparison
     ax2 = fig.add_subplot(gs[0, 1])
@@ -128,27 +162,25 @@ def plot_comparison(summary_df, results_df, exp_folder):
     rmse_denoised = summary_df['mean_rmse_denoised'].values
     ax2.bar(x - width/2, rmse_noisy, width, label='Noisy', color='#e74c3c',
            alpha=0.8, edgecolor='black')
-    ax2.bar(x + width/2, rmse_denoised, width, label='Denoised', color='#3498db',
+    ax2.bar(x + width/2, rmse_denoised, width, label='Denoised', color=colors,
            alpha=0.8, edgecolor='black')
     ax2.set_xlabel('Model', fontsize=12, fontweight='bold')
     ax2.set_ylabel('RMSE', fontsize=12, fontweight='bold')
-    ax2.set_title('RMSE: Noisy vs Denoised', fontsize=13, fontweight='bold')
+    ax2.set_title('RMSE: Noisy vs Denoised', fontsize=13, fontweight='bold', pad=10)
     ax2.set_xticks(x)
-    ax2.set_xticklabels(models, rotation=45, ha='right')
+    ax2.set_xticklabels(models, rotation=45, ha='right', fontsize=9)
     ax2.legend()
     ax2.grid(True, alpha=0.3, axis='y')
 
     # Plot 3: RMSE Improvement Percentage
     ax3 = fig.add_subplot(gs[1, 0])
     improvement_pct = summary_df['rmse_improvement_pct'].values
-    colors = ['#27ae60' if p > 50 else '#f39c12' if p > 30 else '#c0392b'
-             for p in improvement_pct]
     ax3.bar(x, improvement_pct, color=colors, alpha=0.8, edgecolor='black', linewidth=1)
     ax3.set_xlabel('Model', fontsize=12, fontweight='bold')
     ax3.set_ylabel('RMSE Improvement (%)', fontsize=12, fontweight='bold')
-    ax3.set_title('Relative RMSE Improvement', fontsize=13, fontweight='bold')
+    ax3.set_title('Relative RMSE Improvement', fontsize=13, fontweight='bold', pad=10)
     ax3.set_xticks(x)
-    ax3.set_xticklabels(models, rotation=45, ha='right')
+    ax3.set_xticklabels(models, rotation=45, ha='right', fontsize=9)
     ax3.grid(True, alpha=0.3, axis='y')
     ax3.axhline(y=50, color='green', linestyle='--', alpha=0.5, label='Good (>50%)')
     ax3.axhline(y=30, color='orange', linestyle='--', alpha=0.5, label='Average (>30%)')
@@ -159,13 +191,13 @@ def plot_comparison(summary_df, results_df, exp_folder):
     data_to_plot = [results_df[results_df['model'] == m]['output_snr_db'].values
                    for m in models]
     bp = ax4.boxplot(data_to_plot, labels=models, patch_artist=True)
-    for patch in bp['boxes']:
-        patch.set_facecolor('#9b59b6')
+    for i, patch in enumerate(bp['boxes']):
+        patch.set_facecolor(colors[i])
         patch.set_alpha(0.7)
     ax4.set_xlabel('Model', fontsize=12, fontweight='bold')
     ax4.set_ylabel('Output SNR (dB)', fontsize=12, fontweight='bold')
-    ax4.set_title('Output SNR Distribution', fontsize=13, fontweight='bold')
-    ax4.set_xticklabels(models, rotation=45, ha='right')
+    ax4.set_title('Output SNR Distribution', fontsize=13, fontweight='bold', pad=10)
+    ax4.set_xticklabels(models, rotation=45, ha='right', fontsize=9)
     ax4.grid(True, alpha=0.3, axis='y')
 
     plt.tight_layout()
@@ -178,33 +210,46 @@ def plot_comparison(summary_df, results_df, exp_folder):
 
 
 def plot_examples(exp_folder, clean_test, noisy_test, models, n_examples=3):
-    """Plot example denoising results."""
-    fig, axes = plt.subplots(n_examples, len(models) + 2,
-                            figsize=(4*(len(models)+2), 3*n_examples))
+    """Plot example denoising results.
+
+    Layout:
+    - Column 1: Ground truth (green) + Noisy (red with opacity) overlaid
+    - Columns 2+: Each model's prediction with ground truth (green background) and noisy (grey 50% opacity)
+    """
+    fig, axes = plt.subplots(n_examples, len(models) + 1,
+                            figsize=(4*(len(models)+1), 3*n_examples))
 
     if n_examples == 1:
         axes = axes.reshape(1, -1)
 
     for i in range(n_examples):
-        # Clean signal
-        axes[i, 0].plot(clean_test[i].squeeze(), 'g-', linewidth=1)
-        axes[i, 0].set_title('Clean' if i == 0 else '')
-        axes[i, 0].set_ylabel(f'Sample {i+1}')
+        # Column 1: Ground truth + Noisy overlay
+        axes[i, 0].plot(clean_test[i].squeeze(), 'g-', linewidth=1.5, label='Ground Truth', alpha=0.8)
+        axes[i, 0].plot(noisy_test[i].squeeze(), 'r-', linewidth=1, label='Noisy', alpha=0.6)
+        axes[i, 0].set_title('Ground Truth + Noisy' if i == 0 else '')
+        axes[i, 0].set_ylabel(f'Sample {i+1}', fontsize=10, fontweight='bold')
         axes[i, 0].grid(True, alpha=0.3)
+        if i == 0:
+            axes[i, 0].legend(loc='upper right', fontsize=8)
 
-        # Noisy signal
-        axes[i, 1].plot(noisy_test[i].squeeze(), 'r-', linewidth=1, alpha=0.7)
-        axes[i, 1].set_title('Noisy' if i == 0 else '')
-        axes[i, 1].grid(True, alpha=0.3)
-
-        # Denoised signals
+        # Columns 2+: Denoised signals with ground truth and noisy in background
         for j, model in enumerate(models):
             pred_path = os.path.join(exp_folder, 'models', model, 'predictions.npy')
             if os.path.exists(pred_path):
                 predictions = np.load(pred_path)
-                axes[i, j+2].plot(predictions[i], 'b-', linewidth=1)
-                axes[i, j+2].set_title(model if i == 0 else '')
-                axes[i, j+2].grid(True, alpha=0.3)
+
+                # Background: Ground truth (green) and noisy (grey 50% opacity)
+                axes[i, j+1].plot(clean_test[i].squeeze(), 'g-', linewidth=1, alpha=0.5, label='Ground Truth')
+                axes[i, j+1].plot(noisy_test[i].squeeze(), color='grey', linewidth=0.8, alpha=0.5, label='Noisy')
+
+                # Foreground: Prediction (blue, prominent)
+                axes[i, j+1].plot(predictions[i], 'b-', linewidth=1.5, label='Prediction', alpha=0.9)
+
+                axes[i, j+1].set_title(model if i == 0 else '')
+                axes[i, j+1].grid(True, alpha=0.3)
+
+                if i == 0:
+                    axes[i, j+1].legend(loc='upper right', fontsize=7)
 
     plt.tight_layout()
     plot_path = os.path.join(exp_folder, 'results', 'example_denoising.png')
@@ -336,6 +381,12 @@ def main():
         if config['output']['n_example_plots'] > 0:
             plot_examples(exp_folder, clean_test, noisy_test, model_names,
                          n_examples=config['output']['n_example_plots'])
+
+    # Generate qui_plot if enabled (multi-noise config comparison)
+    if config.get('evaluation', {}).get('qui_plot', {}).get('enabled', False):
+        print("\nGenerating qui_plot (multi-noise comparison)...")
+        noise_configs = config['evaluation']['qui_plot']['noise_configs']
+        qui_plot(noise_configs, exp_folder, config, clean_test, model_names)
 
     # Generate PDF report
     if args.report:

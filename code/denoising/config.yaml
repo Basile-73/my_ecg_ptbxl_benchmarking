@@ -24,6 +24,7 @@ preprocessing:
 
 # Models to train
 models:
+  #Stage 1 models
   - name: 'fcn'
     type: 'fcn'
     epochs: 50
@@ -38,6 +39,36 @@ models:
 
   - name: 'imunet'
     type: 'imunet'
+    epochs: 50
+    lr: 0.001
+    batch_size: 32
+
+  # Stage 2 models (DRnet using different Stage 1 models)
+  # Note: Stage2 models can use Stage1 models from:
+  #   1. Current run: Train Stage1 models in same run
+  #   2. Previous run: Automatically looks in output/exp_denoising/models/<stage1_name>/best_model.pth
+  #   3. Custom path: Specify 'stage1_model_path' parameter to use model from anywhere
+
+  - name: 'drnet_fcn'
+    type: 'stage2'
+    stage1_model: 'fcn'  # Use FCN's predictions
+    stage1_model_path: '/local/home/bamorel/my_ecg_ptbxl_benchmarking/code/denoising/output/exp_denoising/models/fcn/best_model.pth'  # Optional: custom path
+    epochs: 50
+    lr: 0.001
+    batch_size: 32
+
+  - name: 'drnet_unet'
+    type: 'stage2'
+    stage1_model: 'unet'  # Use UNet's predictions
+    stage1_model_path: '/local/home/bamorel/my_ecg_ptbxl_benchmarking/code/denoising/output/exp_denoising/models/unet/best_model.pth'  # Optional: custom path
+    epochs: 50
+    lr: 0.001
+    batch_size: 32
+
+  - name: 'drnet_imunet'
+    type: 'stage2'
+    stage1_model: 'imunet'  # Use IMUnet's predictions
+    stage1_model_path: '/local/home/bamorel/my_ecg_ptbxl_benchmarking/code/denoising/output/exp_denoising/models/imunet/best_model.pth'  # Optional: custom path
     epochs: 50
     lr: 0.001
     batch_size: 32
@@ -66,6 +97,15 @@ evaluation:
   n_bootstrap_samples: 100
   n_jobs: 20
   metrics: ['snr_improvement_db', 'output_snr_db', 'rmse', 'rmse_improvement']
+
+  # Qui plot settings: compare across different noise configurations
+  qui_plot:
+    enabled: true  # Set to true to generate qui_plot
+    noise_configs:
+      - name: 'light'
+        path: '../noise/config/light.yaml'
+      - name: 'default'
+        path: '../noise/config/default.yaml'
 
 # Output settings
 output:

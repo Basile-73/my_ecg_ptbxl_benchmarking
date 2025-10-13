@@ -152,14 +152,20 @@ def create_dataloaders(noisy_train, clean_train, noisy_val, clean_val,
 
 
 def create_online_dataloaders(clean_train, clean_val, clean_test,
-                              noise_factory, batch_size=32, num_workers=0,
+                              noise_factory_train, noise_factory_test,
+                              batch_size=32, num_workers=0,
                               pin_memory=True):
-    """Create dataloaders with online noise generation for training."""
-    train_dataset = OnlineNoisingDataset(clean_train, noise_factory)
-    val_dataset = OnlineNoisingDataset(clean_val, noise_factory)
-    test_dataset = OnlineNoisingDataset(clean_test, noise_factory)
+    """Create dataloaders with online noise generation for training.
 
-    # Note: num_workers=0 for online noising to avoid pickling issues with NoiseFactory
+    Args:
+        clean_train, clean_val, clean_test: Clean ECG data splits
+        noise_factory_train: NoiseFactory with mode='train' for training data
+        noise_factory_test: NoiseFactory with mode='test' for val/test data
+        batch_size, num_workers, pin_memory: DataLoader parameters
+    """
+    train_dataset = OnlineNoisingDataset(clean_train, noise_factory_train)
+    val_dataset = OnlineNoisingDataset(clean_val, noise_factory_test)
+    test_dataset = OnlineNoisingDataset(clean_test, noise_factory_test)    # Note: num_workers=0 for online noising to avoid pickling issues with NoiseFactory
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True,
                              num_workers=0, pin_memory=pin_memory, drop_last=True)
     val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False,
@@ -171,12 +177,22 @@ def create_online_dataloaders(clean_train, clean_val, clean_test,
 
 
 def create_stage2_dataloaders(clean_train, clean_val, clean_test,
-                               noise_factory, stage1_model, device,
+                               noise_factory_train, noise_factory_test,
+                               stage1_model, device,
                                batch_size=32, pin_memory=True):
-    """Create dataloaders for Stage2 training with Stage1 predictions."""
-    train_dataset = Stage2OnlineNoisingDataset(clean_train, noise_factory, stage1_model, device)
-    val_dataset = Stage2OnlineNoisingDataset(clean_val, noise_factory, stage1_model, device)
-    test_dataset = Stage2OnlineNoisingDataset(clean_test, noise_factory, stage1_model, device)
+    """Create dataloaders for Stage2 training with Stage1 predictions.
+
+    Args:
+        clean_train, clean_val, clean_test: Clean ECG data splits
+        noise_factory_train: NoiseFactory with mode='train' for training data
+        noise_factory_test: NoiseFactory with mode='test' for val/test data
+        stage1_model: Trained Stage1 model (frozen)
+        device: torch device
+        batch_size, pin_memory: DataLoader parameters
+    """
+    train_dataset = Stage2OnlineNoisingDataset(clean_train, noise_factory_train, stage1_model, device)
+    val_dataset = Stage2OnlineNoisingDataset(clean_val, noise_factory_test, stage1_model, device)
+    test_dataset = Stage2OnlineNoisingDataset(clean_test, noise_factory_test, stage1_model, device)
 
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True,
                              num_workers=0, pin_memory=pin_memory, drop_last=True)

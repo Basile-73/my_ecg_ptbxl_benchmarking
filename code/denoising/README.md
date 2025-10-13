@@ -164,6 +164,41 @@ models:
     ...
 ```
 
+**Training Stage2 Separately (Avoiding Compute Waste):**
+
+Stage2 models can use Stage1 models from previous runs without retraining them:
+
+1. **Automatic Detection** - If Stage1 model exists in output folder:
+   ```yaml
+   # Only train Stage2 - will find pre-trained fcn automatically
+   models:
+     - name: "drnet_fcn"
+       type: "stage2"
+       stage1_model: "fcn"  # Looks in output/exp_denoising/models/fcn/best_model.pth
+   ```
+
+2. **Custom Path** - Specify exact path to pre-trained Stage1:
+   ```yaml
+   models:
+     - name: "drnet_fcn"
+       type: "stage2"
+       stage1_model: "fcn"
+       stage1_model_path: "path/to/pretrained/fcn/model.pth"  # Custom location
+   ```
+
+3. **Training Both** - Stage1 and Stage2 in same run:
+   ```yaml
+   models:
+     - name: "fcn"
+       type: "fcn"
+       ...
+     - name: "drnet_fcn"
+       type: "stage2"
+       stage1_model: "fcn"  # Uses fcn from current run
+   ```
+
+This allows flexible experimentation without wasting compute on retraining Stage1 models.
+
 ### Noise Configuration
 
 Noise specifications are defined in a separate YAML file (e.g., `code/noise/config/default.yaml`):

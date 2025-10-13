@@ -69,13 +69,25 @@ class DenoisingExperiment:
 
         print(f"Using noise config: {self.noise_config_path}")
 
-        # Use 'train' mode for maximum noise diversity during training
-        self.noise_factory = NoiseFactory(
+        # Create two noise factories to avoid data leakage
+        # - Train mode: uses training noise samples (for training data)
+        # - Test mode: uses test noise samples (for validation/test data during training)
+        # - Eval mode: reserved for post-training evaluation in evaluate_results.py
+        self.noise_factory_train = NoiseFactory(
             data_path=noise_data_path,
             sampling_rate=self.config['sampling_frequency'],
             config_path=self.noise_config_path,
-            mode='train'  # Use training noise samples for diversity
+            mode='train'
         )
+
+        self.noise_factory_test = NoiseFactory(
+            data_path=noise_data_path,
+            sampling_rate=self.config['sampling_frequency'],
+            config_path=self.noise_config_path,
+            mode='test'
+        )
+
+        print("✓ Created train and test noise factories (prevents data leakage)")
 
     def prepare(self):
         """Prepare and preprocess data."""
@@ -158,10 +170,11 @@ class DenoisingExperiment:
         print("TRAINING MODELS (with online noising)")
         print("="*80)
         print("Note: Training uses 'train' mode noise samples")
-        print("      Evaluation will use 'eval' mode to avoid data leakage")
+        print("      Validation/Test use 'test' mode to avoid data leakage")
+        print("      Post-training evaluation will use 'eval' mode")
 
-        # Dictionary to store trained Stage1 models for Stage2 training
-        stage1_models = {}
+        # Dictionary to store trained Stage1 model paths for Stage2 training
+        stage1_models = {}  # Will store: {model_name: model_path, f'{model_name}_type': model_type}
 
         # Train each model
         for model_config in self.config['models']:
@@ -180,27 +193,67 @@ class DenoisingExperiment:
 
             # For Stage2, check if required Stage1 model is available
             if is_stage2 and stage1_dependency:
-                if stage1_dependency not in stage1_models:
-                    print(f"ERROR: Stage1 model '{stage1_dependency}' not found. Train it first!")
-                    continue
+                # First check if Stage1 was trained in current run
+                if stage1_dependency in stage1_models:
+                    stage1_model_path = stage1_models[stage1_dependency]
+                    stage1_model_type = stage1_models[f'{stage1_dependency}_type']
+                    print(f"Using Stage1 model from current run: {stage1_dependency}")
+                else:
+                    # Try to find pre-trained Stage1 model from previous run
+                    # Check if model config specifies a path
+                    stage1_path_key = f'stage1_model_path'
+                    if stage1_path_key in model_config:
+                        stage1_model_path = model_config[stage1_path_key]
+                        print(f"Using pre-trained Stage1 model from config: {stage1_model_path}")
+                    else:
+                        # Default: look in standard output folder structure
+                        stage1_model_path = os.path.join(
+                            self.exp_folder, 'models', stage1_dependency, 'best_model.pth'
+                        )
+                        print(f"Looking for pre-trained Stage1 model: {stage1_model_path}")
 
-                # Get trained Stage1 model
-                stage1_model = stage1_models[stage1_dependency]
+                    # Check if file exists
+                    if not os.path.exists(stage1_model_path):
+                        print(f"ERROR: Stage1 model '{stage1_dependency}' not found!")
+                        print(f"  Expected at: {stage1_model_path}")
+                        print(f"  Either:")
+                        print(f"    1. Train '{stage1_dependency}' in this run by adding it to models list")
+                        print(f"    2. Specify 'stage1_model_path' in config pointing to trained model")
+                        print(f"  Skipping {model_name}...")
+                        continue
+
+                    # Infer Stage1 model type from dependency name
+                    stage1_model_type = stage1_dependency
+                    print(f"Found pre-trained Stage1 model: {stage1_model_path}")
+
+                # Load trained Stage1 model from disk
+                print(f"Loading Stage1 model: {stage1_model_type}")
+                stage1_model = get_model(stage1_model_type, input_length=self.input_shape[0], is_stage2=False)
+                stage1_model.load_state_dict(torch.load(stage1_model_path, map_location=self.device))
+                stage1_model = stage1_model.to(self.device)
+                stage1_model.eval()
 
                 # Create Stage2 dataloaders (with Stage1 predictions)
                 print("Creating Stage2 dataloaders with Stage1 predictions...")
                 train_loader, val_loader, test_loader = create_stage2_dataloaders(
                     self.clean_train, self.clean_val, self.clean_test,
-                    self.noise_factory, stage1_model, self.device,
+                    self.noise_factory_train, self.noise_factory_test,
+                    stage1_model, self.device,
                     batch_size=model_config.get('batch_size', 32),
                     pin_memory=self.config['dataloader'].get('pin_memory', True)
                 )
+
+                # Clean up Stage1 model after creating dataloaders to free memory
+                del stage1_model
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+                print("Stage1 model unloaded from memory")
             else:
                 # Create online dataloaders (generates new noise each epoch)
                 print("Creating dataloaders with online noise generation...")
                 train_loader, val_loader, test_loader = create_online_dataloaders(
                     self.clean_train, self.clean_val, self.clean_test,
-                    self.noise_factory,
+                    self.noise_factory_train, self.noise_factory_test,
                     batch_size=model_config.get('batch_size', 32),
                     pin_memory=self.config['dataloader'].get('pin_memory', True)
                 )
@@ -226,17 +279,13 @@ class DenoisingExperiment:
                 model, train_loader, val_loader, training_config, model_path, self.device
             )
 
-            # Store Stage1 models for potential Stage2 use
-            if not is_stage2:
-                stage1_models[model_name] = model
-
             # Save history
             if self.config['output']['save_history']:
                 history_path = os.path.join(model_folder, 'history.json')
                 with open(history_path, 'w') as f:
                     json.dump(history, f)
 
-            # Generate predictions
+            # Generate predictions (do this before deleting model)
             print(f"\nGenerating predictions for {model_name}...")
             predictions = predict_with_model(model, test_loader, self.device)
 
@@ -244,6 +293,18 @@ class DenoisingExperiment:
             if self.config['output']['save_predictions']:
                 pred_path = os.path.join(model_folder, 'predictions.npy')
                 np.save(pred_path, predictions)
+
+            # Store Stage1 model paths for potential Stage2 use (not the model itself)
+            if not is_stage2:
+                stage1_models[model_name] = model_path
+                stage1_models[f'{model_name}_type'] = model_type
+                print(f"Stage1 model path stored: {model_path}")
+
+            # Clean up model from memory after training and predictions
+            del model
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+            print(f"Model {model_name} unloaded from memory")
 
             print(f"✓ {model_name} complete")
 
