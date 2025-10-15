@@ -4,13 +4,370 @@ This module evaluates the impact of ECG denoising on downstream classification p
 
 ## Overview
 
+The `evaluate_downstream.py` script evaluates denoising models on downstream ECG classification tasks with support for selecting which classification models to use.
+
 The evaluation pipeline:
-1. Loads pre-trained **12-lead classification models** (xresnet1d101, inception1d)
+1. Loads pre-trained **12-lead classification models**
 2. Takes **validation fold** ECG data
 3. Adds realistic noise to all 12 leads
 4. Applies **denoising models** (trained on single leads) to each lead independently
 5. Classifies the denoised 12-lead signals
 6. Computes **macro-AUC** with **95% confidence intervals** using bootstrap
+
+## Usage
+
+### Basic Usage (Default Models)
+
+```bash
+cd code/denoising
+python evaluate_downstream.py
+```
+
+This will use the default classification models:
+- `fastai_xresnet1d101`
+- `fastai_inception1d`
+
+### Evaluate All Classification Models
+
+```bash
+python evaluate_downstream.py --classifiers all
+```
+
+This evaluates all 6 available models:
+- `fastai_xresnet1d101`
+- `fastai_inception1d`
+- `fastai_resnet1d_wang`
+- `fastai_lstm`
+- `fastai_lstm_bidir`
+- `fastai_fcn_wang`
+
+### Custom Model Selection
+
+```bash
+# Evaluate specific models
+python evaluate_downstream.py --classifiers fastai_xresnet1d101 fastai_lstm
+
+# With multiple models
+python evaluate_downstream.py --classifiers fastai_xresnet1d101 fastai_inception1d fastai_resnet1d_wang
+```
+
+### Advanced Options
+
+```bash
+# Specify different base experiment
+python evaluate_downstream.py --base-exp exp1 --classifiers all
+
+# Specify different classification sampling rate
+python evaluate_downstream.py --classification-fs 500 --classifiers all
+
+# Complete example with all options
+python evaluate_downstream.py \
+    --config config.yaml \
+    --base-exp exp0 \
+    --classification-fs 100 \
+    --classifiers fastai_xresnet1d101 fastai_inception1d fastai_lstm
+```
+
+### Command Line Parameters
+
+- `--config`: Path to denoising config file (default: `config.yaml`)
+- `--base-exp`: Name of base classification experiment folder (default: `exp0`)
+- `--classification-fs`: Sampling frequency used for classification models in Hz (default: `100`)
+- `--classifiers`: Classification models to evaluate
+  - Use `all` to evaluate all 6 models
+  - Or specify space-separated model names
+  - Default: `fastai_xresnet1d101 fastai_inception1d`
+
+### Available Classification Models
+
+**Note:** Models must be trained and saved in the `base-exp` folder (e.g., `output/exp0/models/`).
+
+Common models include:
+- `fastai_xresnet1d101` ✓ (default)
+- `fastai_inception1d` ✓ (default)
+- `fastai_resnet1d_wang` ✓
+- `fastai_lstm` ✓
+- `fastai_lstm_bidir` ✓
+- `fastai_fcn_wang` ✓
+- `fastai_xresnet1d18`
+- `fastai_xresnet1d34`
+- `fastai_xresnet1d50`
+- `fastai_resnet1d18`
+- `fastai_resnet1d34`
+- `fastai_resnet1d50`
+
+✓ = Included when using `--classifiers all`
+
+## Key Features
+
+### Multi-Lead Processing
+- Denoising models are trained on **single leads**
+- Classification models use **all 12 leads**
+- Each lead is denoised independently, then reconstructed into 12-lead format
+
+### Sampling Rate Handling
+- **Automatic resampling** if denoising and classification models use different sampling rates
+- Warning messages inform you of any resampling operations
+- Example: Denoising at 500Hz → Classification at 100Hz
+
+### Normalization
+- Uses the **same normalization** (StandardScaler) for both tasks
+- No re-normalization needed between denoising and classification
+- Preprocessing follows the base experiment's standardization
+
+### Noise Configuration
+- Uses the noise config specified in `config.yaml`
+- Default: `../noise/config/default.yaml`
+- Noise is added with `mode='eval'` to avoid data leakage
+
+## Requirements
+
+### Pre-trained Models
+
+You need:
+
+1. **Denoising models**: Trained via `run_denoising_experiment.py`
+   - Located in `output/exp_denoising/models/`
+   - Models specified in `config.yaml`
+
+2. **Classification models**: Pre-trained on PTB-XL
+   - Located in `../../output/exp0/models/` (or your specified base experiment)
+   - Available models: xresnet1d101, inception1d, resnet1d_wang, lstm, lstm_bidir, fcn_wang
+
+### Data
+
+- PTB-XL dataset in `../../data/ptbxl/`
+- Noise data in `../../ecg_noise/data/`
+
+## Output
+
+Results are saved to `output/exp_denoising/downstream_results/`:
+
+### 1. CSV Results
+`downstream_classification_results.csv`:
+```
+denoising_model,classification_model,auc,auc_mean,auc_lower,auc_upper
+clean,fastai_xresnet1d101,0.9234,0.9235,0.9156,0.9312
+noisy,fastai_xresnet1d101,0.8891,0.8893,0.8802,0.8981
+fcn,fastai_xresnet1d101,0.9012,0.9014,0.8925,0.9101
+...
+```
+
+Columns:
+- `denoising_model`: Name of denoising model (or 'clean'/'noisy' baseline)
+- `classification_model`: Name of classification model
+- `auc`: Point estimate of macro-AUC
+- `auc_mean`: Bootstrap mean AUC
+- `auc_lower`: Lower bound of 95% CI
+- `auc_upper`: Upper bound of 95% CI
+
+### 2. Individual Model Plots
+`downstream_classification_<model_name>.png`:
+- **One PNG file per classification model**
+- Horizontal bar plot showing all denoising approaches
+- Error bars show 95% confidence intervals
+- Colors: Green (clean), Red (noisy), Blue (Stage1), Purple (Stage2)
+- Includes clean baseline, noisy baseline, and all denoising models
+
+### 3. Improvement Heatmap
+`downstream_improvement_heatmap.png`:
+- Shows AUC improvement over noisy baseline
+- Rows: Denoising models
+- Columns: Classification models
+- Color scale: Green (positive improvement), Red (negative)
+- Compares all denoising models across all classification models
+
+### Example Output Structure
+
+```
+code/denoising/output/exp_denoising/downstream_results/
+├── downstream_classification_results.csv
+├── downstream_classification_fastai_xresnet1d101.png
+├── downstream_classification_fastai_inception1d.png
+├── downstream_classification_fastai_resnet1d_wang.png
+├── downstream_classification_fastai_lstm.png
+├── downstream_classification_fastai_lstm_bidir.png
+├── downstream_classification_fastai_fcn_wang.png
+└── downstream_improvement_heatmap.png
+```
+
+## Usage Examples
+
+### Example 1: Quick Evaluation with Default Models
+
+```bash
+python evaluate_downstream.py
+```
+
+Output: 2 PNG files (xresnet1d101, inception1d) + heatmap
+
+### Example 2: Comprehensive Evaluation
+
+```bash
+python evaluate_downstream.py --classifiers all
+```
+
+Output: 6 PNG files (all models) + heatmap
+
+### Example 3: Single Model Evaluation
+
+```bash
+python evaluate_downstream.py --classifiers fastai_xresnet1d101
+```
+
+Output: 1 PNG file + heatmap
+
+### Example 4: Custom Experiment Setup
+
+```bash
+python evaluate_downstream.py \
+    --base-exp exp1 \
+    --classification-fs 500 \
+    --classifiers fastai_xresnet1d50 fastai_inception1d
+```
+
+Output: 2 PNG files (xresnet1d50, inception1d) + heatmap
+
+## Interpretation
+
+### Baselines
+
+1. **Clean baseline**: Upper bound performance (no noise)
+2. **Noisy baseline**: Lower bound performance (noise, no denoising)
+
+### Success Metrics
+
+Good denoising should:
+- **Recover performance**: AUC closer to clean than noisy
+- **Statistical significance**: 95% CI doesn't overlap with noisy baseline
+- **Consistency**: Works well across multiple classifiers
+
+### Example Results
+
+```
+Model            | xresnet AUC | inception AUC | Avg Improvement
+-----------------|-------------|---------------|----------------
+Clean            | 0.9234      | 0.9187        | Baseline
+Noisy            | 0.8891      | 0.8843        | -0.0354
+fcn              | 0.9012      | 0.8967        | +0.0125
+unet             | 0.9089      | 0.9034        | +0.0201
+imunet           | 0.9123      | 0.9078        | +0.0247
+drnet_fcn        | 0.9145      | 0.9101        | +0.0270
+drnet_unet       | 0.9167      | 0.9124        | +0.0291
+drnet_imunet     | 0.9189      | 0.9145        | +0.0312
+```
+
+In this example:
+- Stage2 models consistently outperform Stage1
+- DRnet_imunet recovers ~88% of lost performance (0.0312 / 0.0354)
+
+## Technical Details
+
+### Processing Pipeline
+
+1. **Load 12-lead data** at classification sampling rate
+2. **Apply StandardScaler** from base experiment
+3. **Add noise** to all 12 leads using NoiseFactory
+4. **Denoise each lead**:
+   - Process leads independently
+   - Use batch processing for efficiency
+   - Shape: (n_samples, time, 1) → model → (n_samples, time, 1)
+5. **Reconstruct 12-lead signal**
+6. **Classify** using pre-trained classifier
+7. **Compute metrics** with bootstrap confidence intervals
+
+### Memory Management
+
+- Denoising is done in batches (default: 32 samples)
+- Only one denoised version kept in memory at a time
+- Models are kept on GPU if available
+
+### Bootstrap Confidence Intervals
+
+- 100 bootstrap samples (default)
+- Stratified sampling ensures all classes represented
+- 95% confidence level
+- Handles class imbalance gracefully
+
+## Troubleshooting
+
+### Issue: "Classification model not found"
+
+**Solution**: Ensure you have run the base classification experiment:
+```bash
+cd code
+python reproduce_results.py exp0
+```
+
+### Issue: "Denoising model not found"
+
+**Solution**: Train denoising models first:
+```bash
+cd code/denoising
+python run_denoising_experiment.py
+```
+
+### Issue: Sampling rate warnings
+
+**Expected behavior**: Script automatically resamples if needed. This is normal if:
+- Denoising trained at 500Hz
+- Classification trained at 100Hz
+
+### Issue: Out of memory
+
+**Solutions**:
+1. Reduce batch size in the script (line ~133): `batch_size=16`
+2. Process fewer denoising models at once
+3. Evaluate fewer classification models (don't use `--classifiers all`)
+4. Use CPU instead of GPU (in config.yaml: `use_cuda: false`)
+
+### Issue: Low AUC scores
+
+**Check**:
+1. Are you using the correct base experiment?
+2. Are labels loaded correctly?
+3. Is normalization applied properly?
+4. Compare with baseline (clean/noisy) first
+
+### Issue: Model not found when using `--classifiers all`
+
+**Solution**: The script will skip models that aren't found and continue with available ones. If you want all 6 models:
+```bash
+cd code
+python reproduce_results.py exp0  # Ensure all models are trained
+```
+
+## Integration with Paper
+
+This evaluation answers the question:
+
+> **"Does denoising ECG signals improve downstream diagnostic performance?"**
+
+Key insights:
+- Quantifies the **practical value** of denoising
+- Tests **generalization** to real diagnostic tasks
+- Compares **Stage1 vs Stage2** architectures on utility
+- Demonstrates **robustness** across different classifiers
+
+## Notes
+
+- Each classification model gets its own PNG file showing all denoising approaches
+- The heatmap remains unchanged and shows all model combinations
+- If a specified classifier model is not found in the base experiment folder, it will be skipped with a warning
+- The script automatically handles resampling if denoising and classification sampling rates differ
+- Use `--classifiers all` for comprehensive evaluation across all 6 models
+
+## References
+
+- **PTB-XL**: Physikalisch-Technische Bundesanstalt database
+- **Classification models**: xresnet1d101, inception1d, resnet1d_wang, lstm, lstm_bidir, fcn_wang architectures
+- **Denoising models**: FCN, UNet, IMUnet, DRnet (Stage2)
+- **Noise**: Real ECG noise from MIT-BIH, NSTDB
+
+## Contact
+
+For issues or questions about this evaluation module, please refer to the main repository documentation.
+
 
 ## Key Features
 

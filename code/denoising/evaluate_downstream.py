@@ -216,7 +216,7 @@ def compute_bootstrap_ci(y_true, y_pred, n_bootstraps=100, confidence_level=0.95
 
 
 def evaluate_downstream(config_path='config.yaml', base_exp='exp0',
-                       classification_sampling_rate=100):
+                       classification_sampling_rate=100, classifier_names=None):
     """
     Main evaluation function.
 
@@ -224,7 +224,11 @@ def evaluate_downstream(config_path='config.yaml', base_exp='exp0',
         config_path: Path to denoising config file
         base_exp: Name of base classification experiment (e.g., 'exp0')
         classification_sampling_rate: Sampling rate used for classification models
+        classifier_names: List of classification model names to evaluate
     """
+    # Default classification models if none specified
+    if classifier_names is None:
+        classifier_names = ['fastai_xresnet1d101', 'fastai_inception1d']
     print("\n" + "="*80)
     print("DOWNSTREAM CLASSIFICATION EVALUATION")
     print("="*80)
@@ -421,7 +425,7 @@ def evaluate_downstream(config_path='config.yaml', base_exp='exp0',
     print("-"*80)
 
     classification_models = {}
-    classifier_names = ['fastai_xresnet1d101', 'fastai_inception1d']
+    # classifier_names will be passed as parameter
 
     for clf_name in classifier_names:
         try:
@@ -556,19 +560,18 @@ def evaluate_downstream(config_path='config.yaml', base_exp='exp0',
 
 
 def plot_downstream_results(results_df, output_folder):
-    """Create visualizations of downstream classification results."""
+    """Create visualizations of downstream classification results.
+
+    Creates one PNG file per classification model showing all denoising approaches.
+    """
 
     sns.set_style("whitegrid")
 
-    # Create figure with multiple subplots
-    fig, axes = plt.subplots(1, 2, figsize=(16, 6))
-    fig.suptitle('Downstream ECG Classification Performance',
-                 fontsize=16, fontweight='bold', y=1.02)
-
     classifiers = results_df['classification_model'].unique()
 
-    for idx, clf_name in enumerate(classifiers):
-        ax = axes[idx]
+    # Create one figure per classifier
+    for clf_name in classifiers:
+        fig, ax = plt.subplots(figsize=(10, max(8, len(results_df['denoising_model'].unique()) * 0.5)))
 
         # Filter data for this classifier
         clf_data = results_df[results_df['classification_model'] == clf_name].copy()
@@ -591,7 +594,7 @@ def plot_downstream_results(results_df, output_folder):
                 colors.append('#2ecc71')  # Green
             elif model == 'noisy':
                 colors.append('#e74c3c')  # Red
-            elif 'stage2' in model or 'drnet' in model:
+            elif 'stage2' in model.lower() or 'drnet' in model.lower():
                 colors.append('#9b59b6')  # Purple (Stage2)
             else:
                 colors.append('#3498db')  # Blue (Stage1)
@@ -605,7 +608,8 @@ def plot_downstream_results(results_df, output_folder):
         ax.set_yticks(y_pos)
         ax.set_yticklabels(denoise_models, fontsize=9)
         ax.set_xlabel('AUC (macro)', fontsize=11, fontweight='bold')
-        ax.set_title(f'{clf_name}', fontsize=12, fontweight='bold', pad=10)
+        ax.set_title(f'Downstream ECG Classification Performance - {clf_name}',
+                    fontsize=13, fontweight='bold', pad=15)
         ax.grid(True, alpha=0.3, axis='x')
 
         # Add value labels
@@ -619,14 +623,15 @@ def plot_downstream_results(results_df, output_folder):
         x_max = min(1.0, all_values.max() + 0.05)
         ax.set_xlim([x_min, x_max])
 
-    plt.tight_layout()
+        plt.tight_layout()
 
-    # Save plot
-    plot_path = os.path.join(output_folder, 'downstream_classification_comparison.png')
-    plt.savefig(plot_path, dpi=300, bbox_inches='tight')
-    plt.close()
+        # Save plot with classifier name in filename
+        safe_clf_name = clf_name.replace('/', '_').replace('\\', '_')
+        plot_path = os.path.join(output_folder, f'downstream_classification_{safe_clf_name}.png')
+        plt.savefig(plot_path, dpi=300, bbox_inches='tight')
+        plt.close()
 
-    print(f"✓ Visualization saved to: {plot_path}")
+        print(f"✓ Visualization saved to: {plot_path}")
 
     # Create improvement heatmap
     create_improvement_heatmap(results_df, output_folder)
@@ -717,8 +722,33 @@ def create_improvement_heatmap(results_df, output_folder):
 
 def main():
     """Main entry point."""
+    # Define all available classification models
+    ALL_CLASSIFIERS = [
+        'fastai_xresnet1d101',
+        'fastai_inception1d',
+        'fastai_resnet1d_wang',
+        'fastai_lstm',
+        'fastai_lstm_bidir',
+        'fastai_fcn_wang'
+    ]
+
     parser = argparse.ArgumentParser(
-        description='Evaluate denoising models on downstream ECG classification'
+        description='Evaluate denoising models on downstream ECG classification',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Use default models (xresnet1d101, inception1d)
+  python evaluate_downstream.py
+
+  # Evaluate all 6 models
+  python evaluate_downstream.py --classifiers all
+
+  # Evaluate specific models
+  python evaluate_downstream.py --classifiers fastai_xresnet1d101 fastai_lstm
+
+  # With custom experiment settings
+  python evaluate_downstream.py --base-exp exp1 --classification-fs 500 --classifiers all
+        """
     )
     parser.add_argument('--config', type=str, default='config.yaml',
                        help='Path to denoising config file')
@@ -726,12 +756,25 @@ def main():
                        help='Name of base classification experiment')
     parser.add_argument('--classification-fs', type=int, default=100,
                        help='Sampling frequency used for classification models (Hz)')
+    parser.add_argument('--classifiers', type=str, nargs='+',
+                       default=['fastai_xresnet1d101', 'fastai_inception1d'],
+                       help='Classification models to evaluate. Use "all" for all 6 models, '
+                            'or specify space-separated model names. '
+                            f'Available: {", ".join(ALL_CLASSIFIERS)}')
     args = parser.parse_args()
+
+    # Handle 'all' keyword
+    if len(args.classifiers) == 1 and args.classifiers[0].lower() == 'all':
+        classifier_names = ALL_CLASSIFIERS
+        print(f"Using all {len(ALL_CLASSIFIERS)} classification models")
+    else:
+        classifier_names = args.classifiers
 
     evaluate_downstream(
         config_path=args.config,
         base_exp=args.base_exp,
-        classification_sampling_rate=args.classification_fs
+        classification_sampling_rate=args.classification_fs,
+        classifier_names=classifier_names
     )
 
 
