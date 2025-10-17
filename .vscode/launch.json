@@ -5,9 +5,16 @@
   "version": "0.2.0",
   "configurations": [
 
-
     {
-      "name": "Python Debugger: Current File with Arguments",
+      "name": "Python Debugger: train.py with denoising_config_debug.yaml",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "code/denoising/train.py",
+      "console": "integratedTerminal",
+      "args": ["--config", "code/denoising/configs/denoising_config_debug.yaml"]
+    },
+    {
+      "name": "Python Debugger: test_normalization.py with config_channel.yaml",
       "type": "debugpy",
       "request": "launch",
       "program": "tests/normalization/test_normalization.py",

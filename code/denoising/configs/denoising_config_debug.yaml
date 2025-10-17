@@ -1,8 +1,8 @@
 # ECG Denoising Experiment Configuration
 
 # Experiment settings
-experiment_name: 'exp_denoising_quick'
-sampling_frequency: 100  # Hz
+experiment_name: 'exp_denoising_debug'
+sampling_frequency: 500  # Hz
 random_seed: 42
 
 # Paths
@@ -30,19 +30,19 @@ models:
   #Stage 1 models
   - name: 'fcn'
     type: 'fcn'
-    epochs: 2
+    epochs: 50
     lr: 0.001
     batch_size: 32
 
   - name: 'unet'
     type: 'unet'
-    epochs: 2
+    epochs: 50
     lr: 0.001
     batch_size: 32
 
   - name: 'imunet'
     type: 'imunet'
-    epochs: 2
+    epochs: 50
     lr: 0.001
     batch_size: 32
 
@@ -56,7 +56,7 @@ models:
     type: 'stage2'
     stage1_model: 'fcn'  # Use FCN's predictions
     stage1_model_path: '/local/home/bamorel/my_ecg_ptbxl_benchmarking/code/denoising/output/exp_denoising/models/fcn/best_model.pth'  # Optional: custom path
-    epochs: 2
+    epochs: 50
     lr: 0.001
     batch_size: 32
 
@@ -64,7 +64,7 @@ models:
     type: 'stage2'
     stage1_model: 'unet'  # Use UNet's predictions
     stage1_model_path: '/local/home/bamorel/my_ecg_ptbxl_benchmarking/code/denoising/output/exp_denoising/models/unet/best_model.pth'  # Optional: custom path
-    epochs: 2
+    epochs: 50
     lr: 0.001
     batch_size: 32
 
@@ -72,7 +72,7 @@ models:
     type: 'stage2'
     stage1_model: 'imunet'  # Use IMUnet's predictions
     stage1_model_path: '/local/home/bamorel/my_ecg_ptbxl_benchmarking/code/denoising/output/exp_denoising/models/imunet/best_model.pth'  # Optional: custom path
-    epochs: 2
+    epochs: 50
     lr: 0.001
     batch_size: 32
 

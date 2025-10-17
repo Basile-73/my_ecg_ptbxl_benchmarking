@@ -21,6 +21,7 @@ preprocessing:
   bandpass_highcut: 45.0  # Hz
   bandpass_order: 2
   normalization: 'standard'  # 'standard' or 'minmax'
+  normalization_axis: 'all'  # 'channel' (per-channel/per-sample) or 'all' (global)
 
 # Models to train
 models:

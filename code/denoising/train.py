@@ -142,7 +142,9 @@ class DenoisingExperiment:
         # Normalize
         print("\n4. Normalizing signals...")
         clean_train, norm_stats = normalize_signals(
-            clean_train, method=preproc_config['normalization']
+            clean_train,
+            method=preproc_config['normalization'],
+            axis=preproc_config.get('normalization_axis', 'channel')
         )
         clean_val, _ = normalize_signals(clean_val, stats=norm_stats)
         clean_test, _ = normalize_signals(clean_test, stats=norm_stats)
