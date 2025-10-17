@@ -55,7 +55,10 @@ def analyze_rmse_variance(noise_configs, exp_folder, config, clean_val, models):
     # For each noise config and model, find high/low RMSE examples
     for noise_config in tqdm(noise_configs, desc="Processing noise configs"):
         config_name = noise_config['name']
-        config_path = noise_config['path']
+        config_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))),
+            noise_config['path']
+        )
 
         print(f"\n--- Analyzing Noise Config: {config_name} ---")
 

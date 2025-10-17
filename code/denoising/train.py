@@ -23,13 +23,15 @@ from denoising_utils.training import train_model, predict_with_model
 from ecg_noise_factory.noise import NoiseFactory
 
 # Import load_dataset from parent utils directory
+import sys
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../classification'))
 from utils.utils import load_dataset
 
 
 class DenoisingExperiment:
     """Experiment class for ECG denoising, similar to NoiseRobustnessExperiment."""
 
-    def __init__(self, config_path: str = 'config.yaml'):
+    def __init__(self, config_path: str = 'code/denoising/configs/denoising_config.yaml'):
         """Initialize experiment with config file."""
         with open(config_path, 'r') as f:
             self.config = yaml.safe_load(f)
@@ -61,11 +63,16 @@ class DenoisingExperiment:
         print(f"Using device: {self.device}")
 
         # Initialize noise factory
-        noise_data_path = os.path.join(os.path.dirname(__file__), '../../ecg_noise/data')
+        noise_data_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+            self.config['noise_data_path']
+            )
 
         # Load noise config path from main config
-        self.noise_config_path = os.path.join(os.path.dirname(__file__),
-                                             self.config['noise_config_path'])
+        self.noise_config_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+            self.config['noise_config_path']
+            )
 
         print(f"Using noise config: {self.noise_config_path}")
 
@@ -317,7 +324,7 @@ def main():
     """Main entry point."""
     import argparse
     parser = argparse.ArgumentParser(description='Run ECG denoising experiments')
-    parser.add_argument('--config', type=str, default='config.yaml',
+    parser.add_argument('--config', type=str, default='code/denoising/configs/denoising_config.yaml',
                        help='Path to config file')
     args = parser.parse_args()
 

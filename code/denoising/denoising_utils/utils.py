@@ -236,8 +236,8 @@ class DenoisingModelWrapper(nn.Module):
 def get_model(model_type: str, input_length: int = 5000,
               pretrained_path: Optional[str] = None, is_stage2: bool = False) -> nn.Module:
     """Get model by name."""
-    # Add ECG-processing folder to path (it's in the parent denoising directory)
-    ecg_processing_path = os.path.join(os.path.dirname(__file__), '../ECG-processing')
+    # Add ECG-processing folder to path (it's in denoising_models/ECG-processing)
+    ecg_processing_path = os.path.join(os.path.dirname(__file__), '../denoising_models/ECG-processing')
     sys.path.insert(0, ecg_processing_path)
 
     model_type = model_type.lower()

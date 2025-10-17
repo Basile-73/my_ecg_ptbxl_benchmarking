@@ -52,7 +52,7 @@ class Bottleneck1d(nn.Module):
     expansion = 4
     def __init__(self, inplanes, planes, stride=1, kernel_size=3, downsample=None):
         super().__init__()
-        
+
         self.conv1 = nn.Conv1d(inplanes, planes, kernel_size=1, bias=False)
         self.bn1 = nn.BatchNorm1d(planes)
         self.conv2 = nn.Conv1d(planes, planes, kernel_size=kernel_size, stride=stride,
@@ -108,20 +108,20 @@ class ResNet1d(nn.Sequential):
                 layers_tmp.append(self._make_layer(block, inplanes, layers[0],kernel_size=kernel_size))
             else:
                 layers_tmp.append(self._make_layer(block, inplanes if fix_feature_dim else (2**i)*inplanes, layers[i], stride=stride,kernel_size=kernel_size))
-        
+
         #head
         #layers_tmp.append(nn.AdaptiveAvgPool1d(1))
         #layers_tmp.append(Flatten())
         #layers_tmp.append(nn.Linear((inplanes if fix_feature_dim else (2**len(layers)*inplanes)) * block.expansion, num_classes))
-        
+
         head = create_head1d((inplanes if fix_feature_dim else (2**len(layers)*inplanes)) * block.expansion, nc=num_classes, lin_ftrs=lin_ftrs_head, ps=ps_head, bn_final=bn_final_head, bn=bn_head, act=act_head, concat_pooling=concat_pooling)
         layers_tmp.append(head)
-        
+
         super().__init__(*layers_tmp)
 
     def _make_layer(self, block, planes, blocks, stride=1,kernel_size=3):
         downsample = None
-        
+
         if stride != 1 or self.inplanes != planes * block.expansion:
             downsample = nn.Sequential(
                 nn.Conv1d(self.inplanes, planes * block.expansion,
@@ -136,13 +136,13 @@ class ResNet1d(nn.Sequential):
             layers.append(block(self.inplanes, planes))
 
         return nn.Sequential(*layers)
-    
+
     def get_layer_groups(self):
         return (self[6],self[-1])
-    
+
     def get_output_layer(self):
         return self[-1][-1]
-        
+
     def set_output_layer(self,x):
         self[-1][-1]=x
 
@@ -174,7 +174,7 @@ def resnet1d152(**kwargs):
 
 #original used kernel_size_stem = 8
 def resnet1d_wang(**kwargs):
-    
+
     if(not("kernel_size" in kwargs.keys())):
         kwargs["kernel_size"]=[5,3]
     if(not("kernel_size_stem" in kwargs.keys())):
@@ -242,7 +242,7 @@ class WideResNet1d(nn.Sequential):
     def __init__(self, input_channels:int, num_groups:int, N:int, num_classes:int, k:int=1, drop_p:float=0.0, start_nf:int=16,fix_feature_dim=True,kernel_size=5,lin_ftrs_head=None, ps_head=0.5, bn_final_head=False, bn_head=True, act_head="relu", concat_pooling=True):
         super().__init__()
         n_channels = [start_nf]
-        
+
         for i in range(num_groups): n_channels.append(start_nf if fix_feature_dim else start_nf*(2**i)*k)
 
         layers = [conv1d(input_channels, n_channels[0], 3, 1)]  # conv1 stem
@@ -253,15 +253,15 @@ class WideResNet1d(nn.Sequential):
         #           Flatten(), nn.Linear(n_channels[-1], num_classes)]
         head = create_head1d(n_channels[-1], nc=num_classes, lin_ftrs=lin_ftrs_head, ps=ps_head, bn_final=bn_final_head, bn=bn_head, act=act_head, concat_pooling=concat_pooling)
         layers.append(head)
-        
+
         super().__init__(*layers)
-    
+
     def get_layer_groups(self):
         return (self[6],self[-1])
-    
+
     def get_output_layer(self):
         return self[-1][-1]
-    
+
     def set_output_layer(self,x):
         self[-1][-1] = x
 

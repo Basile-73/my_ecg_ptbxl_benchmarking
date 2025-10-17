@@ -43,7 +43,7 @@ def init_default(m, func=nn.init.kaiming_normal_):
     with torch.no_grad():
         if getattr(m, 'bias', None) is not None: m.bias.fill_(0.)
     return m
-    
+
 def _get_norm(prefix, nf, ndim=2, zero=False, **kwargs):
     "Norm layer with `nf` features and `ndim` initialized depending on `norm_type`."
     assert 1 <= ndim <= 3
@@ -51,7 +51,7 @@ def _get_norm(prefix, nf, ndim=2, zero=False, **kwargs):
     if bn.affine:
         bn.bias.data.fill_(1e-3)
         bn.weight.data.fill_(0. if zero else 1.)
-    return bn 
+    return bn
 
 def BatchNorm(nf, ndim=2, norm_type=NormType.Batch, **kwargs):
     "BatchNorm layer with `nf` features and `ndim` initialized depending on `norm_type`."
@@ -150,7 +150,7 @@ class XResNet1d(nn.Sequential):
                   for i,l in enumerate(layers)]
 
         head = create_head1d(block_szs[-1]*expansion, nc=num_classes, lin_ftrs=lin_ftrs_head, ps=ps_head, bn_final=bn_final_head, bn=bn_head, act=act_head, concat_pooling=concat_pooling)
-        
+
         super().__init__(
             *stem, nn.MaxPool1d(kernel_size=3, stride=2, padding=1),
             *blocks,
@@ -163,13 +163,13 @@ class XResNet1d(nn.Sequential):
             *[self.block(self.expansion, ni if i==0 else nf, nf, stride=stride if i==0 else 1,
                       kernel_size=kernel_size, sa=sa and i==(blocks-1), act_cls=self.act_cls, **kwargs)
               for i in range(blocks)])
-    
+
     def get_layer_groups(self):
         return (self[3],self[-1])
-    
+
     def get_output_layer(self):
         return self[-1][-1]
-        
+
     def set_output_layer(self,x):
         self[-1][-1]=x
 
@@ -177,7 +177,7 @@ class XResNet1d(nn.Sequential):
 #xresnets
 def _xresnet1d(expansion, layers, **kwargs):
     return XResNet1d(ResBlock, expansion, layers, **kwargs)
-    
+
 def xresnet1d18 (**kwargs): return _xresnet1d(1, [2, 2,  2, 2], **kwargs)
 def xresnet1d34 (**kwargs): return _xresnet1d(1, [3, 4,  6, 3], **kwargs)
 def xresnet1d50 (**kwargs): return _xresnet1d(4, [3, 4,  6, 3], **kwargs)
@@ -189,4 +189,3 @@ def xresnet1d50_deep  (**kwargs): return _xresnet1d(4, [3,4,6,3,1,1], **kwargs)
 def xresnet1d18_deeper(**kwargs): return _xresnet1d(1, [2,2,1,1,1,1,1,1], **kwargs)
 def xresnet1d34_deeper(**kwargs): return _xresnet1d(1, [3,4,6,3,1,1,1,1], **kwargs)
 def xresnet1d50_deeper(**kwargs): return _xresnet1d(4, [3,4,6,3,1,1,1,1], **kwargs)
-

@@ -10,18 +10,18 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print("Using device:", device)
 
-    datafolder = '../data/ptbxl/'
-    datafolder_icbeb = '../data/ICBEB/'
-    outputfolder = '../output/'
+    datafolder = 'data/ptbxl/'
+    # datafolder_icbeb = '../../data/ICBEB/' # ICBEB data not available
+    outputfolder = 'code/classification/output/short/'
 
     models = [
         conf_fastai_xresnet1d101,
-        conf_fastai_resnet1d_wang,
-        conf_fastai_lstm,
-        conf_fastai_lstm_bidir,
-        conf_fastai_fcn_wang,
-        conf_fastai_inception1d,
-        conf_wavelet_standard_nn,
+        # conf_fastai_resnet1d_wang,
+        # conf_fastai_lstm,
+        # conf_fastai_lstm_bidir,
+        # conf_fastai_fcn_wang,
+        # conf_fastai_inception1d,
+        # conf_wavelet_standard_nn,
         ]
 
     ##########################################

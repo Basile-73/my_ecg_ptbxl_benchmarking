@@ -122,14 +122,14 @@ Examples:
     parser.add_argument(
         '--data-folder',
         type=str,
-        default='../data/ptbxl/',
+        default='data/ptbxl/',
         help='Path to PTB-XL data folder'
     )
 
     parser.add_argument(
         '--output-folder',
         type=str,
-        default='../output/',
+        default='code/classification/output/short/',
         help='Path to output folder'
     )
 
@@ -211,7 +211,7 @@ def main():
     print()
 
     # Noise config path
-    noise_config_path = f'../../ecg_noise/configs/{args.noise_config}.yaml'
+    noise_config_path = f'../../../noise/configs/{args.noise_config}.yaml'
 
     # Create experiment
     try:

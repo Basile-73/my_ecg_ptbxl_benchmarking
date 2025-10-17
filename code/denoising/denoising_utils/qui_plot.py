@@ -70,7 +70,10 @@ def qui_plot(noise_configs, exp_folder, config, clean_test, models):
     # Progress bar for noise configs
     for noise_config in tqdm(noise_configs, desc="Processing noise configs", position=0):
         config_name = noise_config['name']
-        config_path = noise_config['path']
+        config_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))),
+            noise_config['path']
+        )
 
         print(f"\n--- Noise Config: {config_name} ---")
         print(f"Path: {config_path}")

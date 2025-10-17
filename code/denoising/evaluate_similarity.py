@@ -23,7 +23,7 @@ from denoising_utils.rmse_analysis import analyze_rmse_variance
 from ecg_noise_factory.noise import NoiseFactory
 
 
-def load_config(config_path='config.yaml'):
+def load_config(config_path='code/denoising/configs/denoising_config.yaml'):
     """Load configuration."""
     with open(config_path, 'r') as f:
         return yaml.safe_load(f)
@@ -304,7 +304,7 @@ def main():
     """Main evaluation function."""
     import argparse
     parser = argparse.ArgumentParser(description='Evaluate denoising results')
-    parser.add_argument('--config', type=str, default='config.yaml')
+    parser.add_argument('--config', type=str, default='code/denoising/configs/denoising_config.yaml')
     parser.add_argument('--report', action='store_true', help='Generate PDF report')
     args = parser.parse_args()
 
@@ -324,8 +324,15 @@ def main():
 
     # Initialize NoiseFactory with 'eval' mode to avoid data leakage
     print("\nInitializing NoiseFactory with 'eval' mode (no data leakage)...")
-    noise_data_path = os.path.join(os.path.dirname(__file__), '../../ecg_noise/data')
-    noise_config_path = os.path.join(os.path.dirname(__file__), config['noise_config_path'])
+    noise_data_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+            config['noise_data_path']
+            )
+
+    noise_config_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+            config['noise_config_path']
+            )
 
     noise_factory = NoiseFactory(
         data_path=noise_data_path,

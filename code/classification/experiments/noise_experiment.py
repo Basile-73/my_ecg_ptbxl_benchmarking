@@ -24,7 +24,7 @@ class NoiseRobustnessExperiment():
     '''
 
     def __init__(self, experiment_name, base_experiment, model_names, datafolder, outputfolder,
-                 noise_config_path='../../ecg_noise/configs/default.yaml', sampling_frequency=100,
+                 noise_config_path='../../../noise/configs/default.yaml', sampling_frequency=100,
                  train_fold=8, val_fold=9, test_fold=10):
         """
         Args:
@@ -50,7 +50,7 @@ class NoiseRobustnessExperiment():
         self.test_fold = test_fold
 
         # Path to noise data and config
-        noise_data_path = os.path.join(os.path.dirname(__file__), '../../ecg_noise/data')
+        noise_data_path = os.path.join(os.path.dirname(__file__), '../../../noise/data')
         self.noise_config_path = os.path.join(os.path.dirname(__file__), noise_config_path)
 
         # Initialize noise factory

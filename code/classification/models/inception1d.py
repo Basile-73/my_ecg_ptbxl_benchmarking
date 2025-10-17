@@ -40,11 +40,11 @@ class Shortcut1d(nn.Module):
         self.conv=conv(ni, nf, 1)
         self.bn=nn.BatchNorm1d(nf)
 
-    def forward(self, inp, out): 
+    def forward(self, inp, out):
         #print("sk",out.size(), inp.size(), self.conv(inp).size(), self.bn(self.conv(inp)).size)
         #input()
         return self.act_fn(out + self.bn(self.conv(inp)))
-        
+
 class InceptionBackbone(nn.Module):
     def __init__(self, input_channels, kss, depth, bottleneck_size, nb_filters, use_residual):
         super().__init__()
@@ -55,10 +55,10 @@ class InceptionBackbone(nn.Module):
 
         n_ks = len(kss) + 1
         self.im = nn.ModuleList([InceptionBlock1d(input_channels if d==0 else n_ks*nb_filters,nb_filters=nb_filters,kss=kss, bottleneck_size=bottleneck_size) for d in range(depth)])
-        self.sk = nn.ModuleList([Shortcut1d(input_channels if d==0 else n_ks*nb_filters, n_ks*nb_filters) for d in range(depth//3)])    
-        
+        self.sk = nn.ModuleList([Shortcut1d(input_channels if d==0 else n_ks*nb_filters, n_ks*nb_filters) for d in range(depth//3)])
+
     def forward(self, x):
-        
+
         input_res = x
         for d in range(self.depth):
             x = self.im[d](x)
@@ -73,9 +73,9 @@ class Inception1d(nn.Module):
         super().__init__()
         assert(kernel_size>=40)
         kernel_size = [k-1 if k%2==0 else k for k in [kernel_size,kernel_size//2,kernel_size//4]] #was 39,19,9
-        
+
         layers = [InceptionBackbone(input_channels=input_channels, kss=kernel_size, depth=depth, bottleneck_size=bottleneck_size, nb_filters=nb_filters, use_residual=use_residual)]
-       
+
         n_ks = len(kernel_size) + 1
         #head
         head = create_head1d(n_ks*nb_filters, nc=num_classes, lin_ftrs=lin_ftrs_head, ps=ps_head, bn_final=bn_final_head, bn=bn_head, act=act_head, concat_pooling=concat_pooling)
@@ -87,20 +87,20 @@ class Inception1d(nn.Module):
 
     def forward(self,x):
         return self.layers(x)
-    
+
     def get_layer_groups(self):
         depth = self.layers[0].depth
         if(depth>3):
             return ((self.layers[0].im[3:],self.layers[0].sk[1:]),self.layers[-1])
         else:
             return (self.layers[-1])
-    
+
     def get_output_layer(self):
         return self.layers[-1][-1]
-    
+
     def set_output_layer(self,x):
         self.layers[-1][-1] = x
-    
+
 def inception1d(**kwargs):
     """Constructs an Inception model
     """

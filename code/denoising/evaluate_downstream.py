@@ -25,7 +25,7 @@ from tqdm import tqdm
 # Add paths
 script_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, script_dir)
-sys.path.insert(0, os.path.join(script_dir, '../'))
+sys.path.insert(0, os.path.join(script_dir, '../classification'))
 sys.path.insert(0, os.path.join(script_dir, '../../ecg_noise/source'))
 
 from denoising_utils.utils import get_model
@@ -34,7 +34,7 @@ from ecg_noise_factory.noise import NoiseFactory
 from utils.utils import load_dataset, apply_standardizer
 
 
-def load_config(config_path='config.yaml'):
+def load_config(config_path='code/denoising/configs/denoising_config.yaml'):
     """Load denoising configuration."""
     with open(config_path, 'r') as f:
         return yaml.safe_load(f)
@@ -215,7 +215,7 @@ def compute_bootstrap_ci(y_true, y_pred, n_bootstraps=100, confidence_level=0.95
     }
 
 
-def evaluate_downstream(config_path='config.yaml', base_exp='exp0',
+def evaluate_downstream(config_path='code/denoising/configs/denoising_config.yaml', base_exp='exp0',
                        classification_sampling_rate=100, classifier_names=None):
     """
     Main evaluation function.
@@ -276,7 +276,10 @@ def evaluate_downstream(config_path='config.yaml', base_exp='exp0',
     print(f"Shape: {X_val_12lead[0].shape} (timesteps, channels)")
 
     # Load classification labels and scaler from base experiment
-    base_exp_path = os.path.join(config['outputfolder'], '..', base_exp)
+    base_exp_path = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+        config['classification_outputfolder'], base_exp
+        )
     if not os.path.exists(base_exp_path):
         # Try without the '..' if outputfolder already includes the right path
         base_exp_path = os.path.join('../../output', base_exp)
@@ -307,8 +310,15 @@ def evaluate_downstream(config_path='config.yaml', base_exp='exp0',
     print("Adding noise to 12-lead data...")
     print("-"*80)
 
-    noise_data_path = os.path.join(script_dir, '../../ecg_noise/data')
-    noise_config_path = os.path.join(script_dir, config['noise_config_path'])
+    noise_data_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+            config['noise_data_path']
+            )
+
+    noise_config_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+            config['noise_config_path']
+            )
 
     print(f"Using noise config: {noise_config_path}")
 
@@ -750,7 +760,7 @@ Examples:
   python evaluate_downstream.py --base-exp exp1 --classification-fs 500 --classifiers all
         """
     )
-    parser.add_argument('--config', type=str, default='config.yaml',
+    parser.add_argument('--config', type=str, default='code/denoising/configs/denoising_config.yaml',
                        help='Path to denoising config file')
     parser.add_argument('--base-exp', type=str, default='exp0',
                        help='Name of base classification experiment')

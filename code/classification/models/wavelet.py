@@ -35,7 +35,7 @@ def calculate_entropy(list_values):
     probabilities = [elem[1]/len(list_values) for elem in counter_values]
     entropy=scipy.stats.entropy(probabilities)
     return entropy
- 
+
 def calculate_statistics(list_values):
     n5 = np.nanpercentile(list_values, 5)
     n25 = np.nanpercentile(list_values, 25)
@@ -47,14 +47,14 @@ def calculate_statistics(list_values):
     var = np.nanvar(list_values)
     rms = np.nanmean(np.sqrt(list_values**2))
     return [n5, n25, n75, n95, median, mean, std, var, rms]
- 
+
 def calculate_crossings(list_values):
     zero_crossing_indices = np.nonzero(np.diff(np.array(list_values) > 0))[0]
     no_zero_crossings = len(zero_crossing_indices)
     mean_crossing_indices = np.nonzero(np.diff(np.array(list_values) > np.nanmean(list_values)))[0]
     no_mean_crossings = len(mean_crossing_indices)
     return [no_zero_crossings, no_mean_crossings]
- 
+
 def get_features(list_values):
     entropy = calculate_entropy(list_values)
     crossings = calculate_crossings(list_values)
@@ -105,7 +105,7 @@ class WaveletModel(ClassificationModel):
     def fit(self, X_train, y_train, X_val, y_val):
         XF_train = get_ecg_features(X_train)
         XF_val = get_ecg_features(X_val)
-        
+
         if self.classifier == 'LR':
             if self.n_classes > 1:
                 clf = OneVsRestClassifier(LogisticRegression(C=self.regularizer_C, solver='lbfgs', max_iter=1000, n_jobs=-1))
@@ -129,7 +129,7 @@ class WaveletModel(ClassificationModel):
             x = Dropout(self.dropout)(x)
             y = Dense(self.n_classes, activation=self.final_activation)(x)
             self.model = Model(input_x, y)
-            
+
             self.model.compile(optimizer='adamax', loss='binary_crossentropy')#, metrics=[keras_macro_auroc])
             # monitor validation error
             mc_loss = ModelCheckpoint(self.outputfolder +'best_loss_model.h5', monitor='val_loss', mode='min', verbose=1, save_best_only=True)

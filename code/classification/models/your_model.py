@@ -6,7 +6,7 @@ class YourModel(ClassificationModel):
         self.n_classes = n_classes
         self.sampling_frequency = sampling_frequency
         self.outputfolder = outputfolder
-        self.input_shape = input_shape 
+        self.input_shape = input_shape
 
     def fit(self, X_train, y_train, X_val, y_val):
         pass
