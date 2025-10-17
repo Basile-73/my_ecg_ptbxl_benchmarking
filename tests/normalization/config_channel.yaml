@@ -1,0 +1,26 @@
+# Configuration for normalization testing
+
+# Name of the test (used for output directory)
+test_name: "normalization_channel"
+
+# List of .npy files to analyze
+files:
+  - "code/denoising/output/exp_denoising_norm_channel/data/clean_test.npy"
+  - "code/denoising/output/exp_denoising_norm_channel/data/clean_train.npy"
+  - "code/denoising/output/exp_denoising_norm_channel/data/clean_val.npy"
+
+# Expected number of dimensions (e.g., 3 for 3D arrays)
+# Set to null to skip dimension checking
+expected_n_dimensions: 3
+
+# Axis/axes along which to check normalization
+# Can be a single integer or a list of integers
+# null means check global normalization
+normalization_axis: 1
+
+# Type of normalization to check
+# Options: "standard" (mean=0, std=1), "minmax" (min=0, max=1), "robust" (median=0, IQR scaling)
+normalization_type: "standard"
+
+# Number of extreme examples to plot
+n_extreme_examples: 5
