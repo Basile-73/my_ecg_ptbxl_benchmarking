@@ -90,10 +90,11 @@ def analyze_rmse_variance(noise_configs, exp_folder, config, clean_val, models):
                 continue
 
             mean_rmse = model_summary['mean_rmse'].values[0]
-            std_rmse = model_summary['std_rmse'].values[0]
+            lower_rmse = model_summary['lower_rmse'].values[0]
+            upper_rmse = model_summary['upper_rmse'].values[0]
 
             print(f"\n  Model: {model_name}")
-            print(f"    Mean RMSE: {mean_rmse:.4f}, Std RMSE: {std_rmse:.4f}")
+            print(f"    Mean RMSE: {mean_rmse:.4f}, Lower Bound RMSE: {lower_rmse:.4f}, Upper Bound RMSE: {upper_rmse:.4f}")
 
             # Load model and generate predictions
             model_folder = os.path.join(exp_folder, 'models', model_name)
@@ -194,8 +195,8 @@ def analyze_rmse_variance(noise_configs, exp_folder, config, clean_val, models):
             torch.cuda.empty_cache()
 
             # Find high and low RMSE examples
-            high_threshold = mean_rmse + std_rmse
-            low_threshold = mean_rmse - std_rmse
+            high_threshold = upper_rmse
+            low_threshold = lower_rmse
 
             high_rmse_indices = np.where(rmse_values >= high_threshold)[0]
             low_rmse_indices = np.where(rmse_values <= low_threshold)[0]
@@ -223,7 +224,7 @@ def analyze_rmse_variance(noise_configs, exp_folder, config, clean_val, models):
 
             fig, axes = plt.subplots(2, 3, figsize=(18, 10))
             fig.suptitle(f'RMSE Analysis: {model_name} - {config_name.upper()} noise\n'
-                        f'Mean RMSE: {mean_rmse:.4f} ± {std_rmse:.4f}',
+                        f'Mean RMSE: {mean_rmse:.4f}',
                         fontsize=16, fontweight='bold')
 
             # Plot high RMSE examples (top row)

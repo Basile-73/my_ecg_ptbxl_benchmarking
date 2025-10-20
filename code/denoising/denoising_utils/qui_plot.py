@@ -11,6 +11,8 @@ import pandas as pd
 import torch
 import matplotlib.pyplot as plt
 from tqdm import tqdm
+from multiprocessing import Pool, cpu_count
+from itertools import repeat
 
 from .utils import get_model
 from ecg_noise_factory.noise import NoiseFactory
@@ -31,7 +33,51 @@ def calculate_rmse(clean, noisy):
     return np.sqrt(np.mean((clean - noisy) ** 2))
 
 
-def qui_plot(noise_configs, exp_folder, config, clean_test, models):
+def get_appropriate_bootstrap_samples(y_true, n_bootstraping_samples):
+    """Generate bootstrap sample indices ensuring all classes are represented.
+
+    Args:
+        y_true: Array of true labels or metrics (N,) or (N, classes)
+        n_bootstraping_samples: Number of bootstrap samples to generate
+
+    Returns:
+        List of bootstrap sample indices
+    """
+    samples = []
+    while True:
+        ridxs = np.random.randint(0, len(y_true), len(y_true))
+        # If y_true has multiple dimensions, check that all have at least one sample
+        if len(y_true.shape) > 1:
+            if y_true[ridxs].sum(axis=0).min() != 0:
+                samples.append(ridxs)
+        else:
+            # For 1D arrays, just ensure we have some variation
+            samples.append(ridxs)
+
+        if len(samples) == n_bootstraping_samples:
+            break
+    return samples
+
+
+def compute_bootstrap_metrics(sample_indices, df, metrics=['rmse_denoised', 'output_snr_db']):
+    """Compute metrics for a single bootstrap sample.
+
+    Args:
+        sample_indices: Indices for bootstrap sample
+        df: DataFrame with sample-level metrics
+        metrics: List of metric column names to compute
+
+    Returns:
+        Dictionary with mean values for each metric
+    """
+    sample_df = df.iloc[sample_indices]
+    result = {}
+    for metric in metrics:
+        result[metric] = sample_df[metric].mean()
+    return result
+
+
+def qui_plot(noise_configs, exp_folder, config, clean_test, models, n_bootstrap_samples=100):
     """Create grouped bar chart comparing models across different noise configurations.
 
     Groups are organized by noise config first, then models within each config.
@@ -45,6 +91,7 @@ def qui_plot(noise_configs, exp_folder, config, clean_test, models):
         config: Main config dictionary
         clean_test: Clean test signals
         models: List of model names to evaluate
+        n_bootstrap_samples: Number of bootstrap samples for confidence intervals (default: 100)
     """
     # Color mapping for models (Stage1 = light, Stage2 = dark)
     color_map = {
@@ -233,8 +280,10 @@ def qui_plot(noise_configs, exp_folder, config, clean_test, models):
     # Convert to DataFrame
     results_df = pd.DataFrame(all_results)
 
-    # Compute summary statistics (mean and std for confidence intervals)
+    # Generate bootstrap samples and compute confidence intervals
+    print("\nComputing bootstrap confidence intervals...")
     summary_stats = []
+
     for noise_config in noise_configs:
         config_name = noise_config['name']
         config_df = results_df[results_df['noise_config'] == config_name]
@@ -243,13 +292,47 @@ def qui_plot(noise_configs, exp_folder, config, clean_test, models):
             model_df = config_df[config_df['model'] == model_name]
 
             if not model_df.empty:
+                # Create simple array for bootstrap sampling (just need the indices)
+                y_dummy = np.ones((len(model_df), 1))
+                bootstrap_samples = get_appropriate_bootstrap_samples(y_dummy, n_bootstrap_samples)
+
+                # Compute metrics for each bootstrap sample
+                bootstrap_results = []
+                for sample_indices in bootstrap_samples:
+                    metrics = compute_bootstrap_metrics(
+                        sample_indices,
+                        model_df.reset_index(drop=True),
+                        metrics=['rmse_denoised', 'output_snr_db']
+                    )
+                    bootstrap_results.append(metrics)
+
+                # Convert to DataFrame for easy quantile computation
+                bootstrap_df = pd.DataFrame(bootstrap_results)
+
+                # Point estimate (using all data)
+                point_rmse = model_df['rmse_denoised'].mean()
+                point_snr = model_df['output_snr_db'].mean()
+
+                # Bootstrap mean and quantiles
+                mean_rmse = bootstrap_df['rmse_denoised'].mean()
+                lower_rmse = bootstrap_df['rmse_denoised'].quantile(0.05)
+                upper_rmse = bootstrap_df['rmse_denoised'].quantile(0.95)
+
+                mean_snr = bootstrap_df['output_snr_db'].mean()
+                lower_snr = bootstrap_df['output_snr_db'].quantile(0.05)
+                upper_snr = bootstrap_df['output_snr_db'].quantile(0.95)
+
                 summary_stats.append({
                     'noise_config': config_name,
                     'model': model_name,
-                    'mean_rmse': model_df['rmse_denoised'].mean(),
-                    'std_rmse': model_df['rmse_denoised'].std(),
-                    'mean_output_snr': model_df['output_snr_db'].mean(),
-                    'std_output_snr': model_df['output_snr_db'].std()
+                    'point_rmse': point_rmse,
+                    'mean_rmse': mean_rmse,
+                    'lower_rmse': lower_rmse,
+                    'upper_rmse': upper_rmse,
+                    'point_output_snr': point_snr,
+                    'mean_output_snr': mean_snr,
+                    'lower_output_snr': lower_snr,
+                    'upper_output_snr': upper_snr
                 })
 
     summary_df = pd.DataFrame(summary_stats)
@@ -291,13 +374,19 @@ def qui_plot(noise_configs, exp_folder, config, clean_test, models):
             model_df = config_df[config_df['model'] == model_name]
 
             if not model_df.empty:
-                mean_rmse = model_df['mean_rmse'].values[0]
-                std_rmse = model_df['std_rmse'].values[0]
+                point_rmse = model_df['point_rmse'].values[0]
+                lower_rmse = model_df['lower_rmse'].values[0]
+                upper_rmse = model_df['upper_rmse'].values[0]
+
+                # Compute error bars (asymmetric)
+                lower_err = point_rmse - lower_rmse
+                upper_err = upper_rmse - point_rmse
+
                 color = color_map.get(model_name, '#cccccc')
 
                 bar_pos = x_pos + model_idx * bar_width
-                ax1.bar(bar_pos, mean_rmse, bar_width,
-                       yerr=std_rmse, capsize=3,
+                ax1.bar(bar_pos, point_rmse, bar_width,
+                       yerr=[[lower_err], [upper_err]], capsize=3,
                        color=color, alpha=0.8, edgecolor='black', linewidth=0.5,
                        label=model_name if config_idx == 0 else '')
 
@@ -308,7 +397,7 @@ def qui_plot(noise_configs, exp_folder, config, clean_test, models):
 
     ax1.set_xlabel('Noise Configuration', fontsize=12, fontweight='bold')
     ax1.set_ylabel('Mean RMSE (Denoised)', fontsize=12, fontweight='bold')
-    ax1.set_title('RMSE Comparison', fontsize=13, fontweight='bold', pad=10)
+    ax1.set_title('RMSE Comparison (90% Bootstrap CI)', fontsize=13, fontweight='bold', pad=10)
     ax1.set_xticks(config_positions)
     ax1.set_xticklabels(config_labels, fontsize=11)
     ax1.grid(True, alpha=0.3, axis='y')
@@ -326,13 +415,19 @@ def qui_plot(noise_configs, exp_folder, config, clean_test, models):
             model_df = config_df[config_df['model'] == model_name]
 
             if not model_df.empty:
-                mean_snr = model_df['mean_output_snr'].values[0]
-                std_snr = model_df['std_output_snr'].values[0]
+                point_snr = model_df['point_output_snr'].values[0]
+                lower_snr = model_df['lower_output_snr'].values[0]
+                upper_snr = model_df['upper_output_snr'].values[0]
+
+                # Compute error bars (asymmetric)
+                lower_err = point_snr - lower_snr
+                upper_err = upper_snr - point_snr
+
                 color = color_map.get(model_name, '#cccccc')
 
                 bar_pos = x_pos + model_idx * bar_width
-                ax2.bar(bar_pos, mean_snr, bar_width,
-                       yerr=std_snr, capsize=3,
+                ax2.bar(bar_pos, point_snr, bar_width,
+                       yerr=[[lower_err], [upper_err]], capsize=3,
                        color=color, alpha=0.8, edgecolor='black', linewidth=0.5,
                        label=model_name if config_idx == 0 else '')
 
@@ -340,7 +435,7 @@ def qui_plot(noise_configs, exp_folder, config, clean_test, models):
 
     ax2.set_xlabel('Noise Configuration', fontsize=12, fontweight='bold')
     ax2.set_ylabel('Mean Output SNR (dB)', fontsize=12, fontweight='bold')
-    ax2.set_title('Output SNR Comparison', fontsize=13, fontweight='bold', pad=10)
+    ax2.set_title('Output SNR Comparison (90% Bootstrap CI)', fontsize=13, fontweight='bold', pad=10)
     ax2.set_xticks(config_positions)
     ax2.set_xticklabels(config_labels, fontsize=11)
     ax2.grid(True, alpha=0.3, axis='y')

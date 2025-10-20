@@ -6,9 +6,11 @@ sampling_frequency: 500  # Hz
 random_seed: 42
 
 # Paths
-datafolder: '../../data/ptbxl/'
-outputfolder: 'output/'
-noise_config_path: '../noise/config/default.yaml'
+datafolder: 'data/ptbxl/'
+outputfolder: 'code/denoising/output'
+noise_config_path: 'noise/configs/default.yaml'
+noise_data_path: 'noise/data/'
+classification_outputfolder: 'code/classification/output'
 
 # Data splits (using strat_fold from PTB-XL)
 train_fold: 8
@@ -104,9 +106,9 @@ evaluation:
     enabled: true  # Set to true to generate qui_plot
     noise_configs:
       - name: 'light'
-        path: '../noise/config/light.yaml'
+        path: 'noise/configs/light.yaml'
       - name: 'default'
-        path: '../noise/config/default.yaml'
+        path: 'noise/configs/default.yaml'
 
 # Output settings
 output:

@@ -23,6 +23,32 @@ from denoising_utils.rmse_analysis import analyze_rmse_variance
 from ecg_noise_factory.noise import NoiseFactory
 
 
+def get_appropriate_bootstrap_samples(y_true, n_bootstraping_samples):
+    """Generate bootstrap sample indices ensuring all classes are represented.
+
+    Args:
+        y_true: Array of true labels or metrics (N,) or (N, classes)
+        n_bootstraping_samples: Number of bootstrap samples to generate
+
+    Returns:
+        List of bootstrap sample indices
+    """
+    samples = []
+    while True:
+        ridxs = np.random.randint(0, len(y_true), len(y_true))
+        # If y_true has multiple dimensions, check that all have at least one sample
+        if len(y_true.shape) > 1:
+            if y_true[ridxs].sum(axis=0).min() != 0:
+                samples.append(ridxs)
+        else:
+            # For 1D arrays, just ensure we have some variation
+            samples.append(ridxs)
+
+        if len(samples) == n_bootstraping_samples:
+            break
+    return samples
+
+
 def load_config(config_path='code/denoising/configs/denoising_config.yaml'):
     """Load configuration."""
     with open(config_path, 'r') as f:
@@ -349,6 +375,15 @@ def main():
 
     # Save eval noisy test data
     np.save(os.path.join(exp_folder, 'data', 'noisy_test_eval.npy'), noisy_test)
+
+    # Generate and save bootstrap samples for confidence interval computation
+    print("Generating bootstrap samples for confidence intervals...")
+    n_bootstrap_samples = 100  # Default value
+    y_dummy = np.ones((len(clean_test), 1))  # Dummy array for bootstrap sampling
+    bootstrap_samples = get_appropriate_bootstrap_samples(y_dummy, n_bootstrap_samples)
+    np.save(os.path.join(exp_folder, 'data', 'bootstrap_samples.npy'),
+            np.array(bootstrap_samples))
+    print(f"Generated and saved {n_bootstrap_samples} bootstrap samples")
 
     print(f"\nTest samples: {len(clean_test)}")    # Evaluate each model
     all_results = []
