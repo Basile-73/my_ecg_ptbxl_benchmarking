@@ -1,7 +1,7 @@
 # ECG Denoising Experiment Configuration
 
 # Experiment settings
-experiment_name: 'exp_denoising_norm_channel_record'
+experiment_name: 'exp_denoising_norm_channel'
 sampling_frequency: 500  # Hz
 random_seed: 42
 
@@ -23,7 +23,7 @@ preprocessing:
   bandpass_highcut: 45.0  # Hz
   bandpass_order: 2
   normalization: 'standard'  # 'standard' or 'minmax'
-  normalization_axis: 'channel_record'  # 'channel_record' (per-record/per-channel), 'channel' (per-channel across all records), or 'all' (global)
+  normalization_axis: 'channel'  # 'channel_record' (per-record/per-channel), 'channel' (per-channel across all records), or 'all' (global)
 
 # Models to train
 models:
