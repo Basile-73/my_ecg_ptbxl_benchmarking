@@ -8,6 +8,7 @@ from torch.utils.data import Dataset, DataLoader
 from typing import Tuple, Optional
 import sys
 import os
+import yaml
 
 
 # ============================================================================
@@ -240,6 +241,10 @@ def get_model(model_type: str, input_length: int = 5000,
     ecg_processing_path = os.path.join(os.path.dirname(__file__), '../denoising_models/ECG-processing')
     sys.path.insert(0, ecg_processing_path)
 
+    # Add my_MECG-E folder to path (it's in denoising_models/my_MECG-E)
+    mecge_path = os.path.join(os.path.dirname(__file__), '../denoising_models/my_MECG-E')
+    sys.path.insert(0, mecge_path)
+
     model_type = model_type.lower()
 
     if model_type == 'fcn':
@@ -258,6 +263,51 @@ def get_model(model_type: str, input_length: int = 5000,
         from Stage2_model3 import DRnet
         base_model = DRnet(in_channels=2)  # 2 channels: noisy + stage1 output
         model = DenoisingModelWrapper(base_model, input_length)
+    elif model_type == 'mecge_phase':
+        # Load MECGE with phase feature configuration
+        config_path = os.path.join(os.path.dirname(__file__), '../denoising_models/my_MECG-E/config/MECGE_phase.yaml')
+        with open(config_path, 'r') as f:
+            config = yaml.safe_load(f)
+        from models.MECGE import MECGE
+        model = MECGE(config)
+
+        if pretrained_path and os.path.exists(pretrained_path):
+            model.load_state_dict(torch.load(pretrained_path))
+
+        n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+        print(f"Loaded {model_type} with {n_params:,} parameters")
+
+        return model
+    elif model_type == 'mecge_complex':
+        # Load MECGE with complex feature configuration
+        config_path = os.path.join(os.path.dirname(__file__), '../denoising_models/my_MECG-E/config/MECGE_complex.yaml')
+        with open(config_path, 'r') as f:
+            config = yaml.safe_load(f)
+        from models.MECGE import MECGE
+        model = MECGE(config)
+
+        if pretrained_path and os.path.exists(pretrained_path):
+            model.load_state_dict(torch.load(pretrained_path))
+
+        n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+        print(f"Loaded {model_type} with {n_params:,} parameters")
+
+        return model
+    elif model_type == 'mecge_wav':
+        # Load MECGE with waveform feature configuration
+        config_path = os.path.join(os.path.dirname(__file__), '../denoising_models/my_MECG-E/config/MECGE_wav.yaml')
+        with open(config_path, 'r') as f:
+            config = yaml.safe_load(f)
+        from models.MECGE import MECGE
+        model = MECGE(config)
+
+        if pretrained_path and os.path.exists(pretrained_path):
+            model.load_state_dict(torch.load(pretrained_path))
+
+        n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+        print(f"Loaded {model_type} with {n_params:,} parameters")
+
+        return model
     else:
         raise ValueError(f"Unknown model name: {model_type}")
 

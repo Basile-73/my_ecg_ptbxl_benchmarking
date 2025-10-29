@@ -30,6 +30,13 @@ def train_model(model: nn.Module, train_loader: DataLoader, val_loader: DataLoad
     model = model.to(device)
     criterion = nn.MSELoss()
 
+    # Detect if model is MECGE (has denoising method)
+    is_mecge = hasattr(model, 'denoising')
+    if is_mecge:
+        print("Detected MECGE model - using internal loss computation")
+    else:
+        print("Using standard model interface with external MSE loss")
+
     # Optimizer
     if config.get('optimizer', 'adam').lower() == 'adam':
         optimizer = optim.Adam(model.parameters(), lr=config.get('lr', 1e-3))
@@ -71,8 +78,16 @@ def train_model(model: nn.Module, train_loader: DataLoader, val_loader: DataLoad
             clean = clean.to(device)
 
             optimizer.zero_grad()
-            output = model(noisy)
-            loss = criterion(output, clean)
+
+            # Handle MECGE vs standard models
+            if is_mecge:
+                # MECGE computes loss internally
+                loss = model(clean, noisy)
+            else:
+                # Standard models need external loss computation
+                output = model(noisy)
+                loss = criterion(output, clean)
+
             loss.backward()
             optimizer.step()
 
@@ -90,8 +105,15 @@ def train_model(model: nn.Module, train_loader: DataLoader, val_loader: DataLoad
                 noisy = noisy.to(device)
                 clean = clean.to(device)
 
-                output = model(noisy)
-                loss = criterion(output, clean)
+                # Handle MECGE vs standard models
+                if is_mecge:
+                    # MECGE computes loss internally
+                    loss = model(clean, noisy)
+                else:
+                    # Standard models need external loss computation
+                    output = model(noisy)
+                    loss = criterion(output, clean)
+
                 val_loss += loss.item()
 
         val_loss /= len(val_loader)
@@ -146,15 +168,34 @@ def predict_with_model(model: nn.Module, test_loader: DataLoader,
     model.eval()
     model = model.to(device)
 
+    # Detect if model is MECGE (has denoising method)
+    is_mecge = hasattr(model, 'denoising')
+    if is_mecge:
+        print("Using MECGE denoising method for inference")
+    else:
+        print("Using standard forward pass for inference")
+
     predictions = []
 
     with torch.no_grad():
         for noisy, _ in tqdm(test_loader, desc="Predicting"):
             noisy = noisy.to(device)
-            output = model(noisy)
+
+            # Handle MECGE vs standard models
+            if is_mecge:
+                # MECGE uses dedicated denoising method
+                output = model.denoising(noisy)
+            else:
+                # Standard models use forward pass
+                output = model(noisy)
+
             predictions.append(output.cpu().numpy())
 
     predictions = np.concatenate(predictions, axis=0)
-    predictions = predictions.squeeze(1).squeeze(1)  # Remove channel dims
+    # Remove all singleton dimensions (handles both 3D and 4D outputs)
+    predictions = np.squeeze(predictions)
+    # Ensure result is 2D (batch, time)
+    if predictions.ndim > 2:
+        predictions = predictions.reshape(predictions.shape[0], -1)
 
     return predictions
