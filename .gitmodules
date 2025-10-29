@@ -1,3 +1,6 @@
 [submodule "code/denoising/denoising_models/ECG-processing"]
 	path = mycode/denoising/denoising_models/ECG-processing
 	url = https://github.com/Basile-73/ECG-processing.git
+[submodule "mycode/denoising/denoising_models/my_MECG-E"]
+	path = mycode/denoising/denoising_models/my_MECG-E
+	url = https://github.com/Basile-73/my_MECG-E.git
