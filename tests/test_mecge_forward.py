@@ -21,15 +21,22 @@ def load_config(config_path):
     return config
 
 
-def test_forward_pass(config_path, feature_type='pha', batch_size=2, signal_length=1000):
+def _run_forward_pass(config_path, feature_type='pha', batch_size=2, signal_length=1000):
     """
-    Test the forward pass of MECGE model.
+    Test the forward pass of MECGE model with both 3D and 4D input formats.
+
+    Note: Function name starts with underscore to avoid pytest collection.
+    This function requires parameters and is invoked via main().
+
+    Tests both input formats:
+    - 4D format (batch, 1, 1, time): Primary format for ECG denoising pipeline compatibility
+    - 3D format (batch, 1, time): Backward compatibility with original implementation
 
     Args:
         config_path: Path to the configuration YAML file
         feature_type: Type of feature ('pha', 'cpx', 'wav')
         batch_size: Batch size for test
-        signal_length: Length of input signal
+        signal_length: Length of input signal (time dimension)
     """
     print(f"\n{'='*60}")
     print(f"Testing MECGE model with feature type: {feature_type}")
@@ -66,45 +73,126 @@ def test_forward_pass(config_path, feature_type='pha', batch_size=2, signal_leng
         print(f"\n✗ Model initialization failed: {e}")
         return False
 
-    # Create dummy input tensors
-    # Shape: [batch_size, channels, time_steps]
-    clean_audio = torch.randn(batch_size, 1, signal_length).to(device)
-    noisy_audio = clean_audio + torch.randn_like(clean_audio) * 0.1
+    # =======================================================================
+    # Test 1: 4D Input Format (Primary - ECG Pipeline Compatibility)
+    # =======================================================================
+    print(f"\n{'─'*60}")
+    print(f"Test 1: 4D Input Format (batch, 1, 1, time)")
+    print(f"{'─'*60}")
 
-    print(f"\nInput shapes:")
-    print(f"  clean_audio: {clean_audio.shape} on {clean_audio.device}")
-    print(f"  noisy_audio: {noisy_audio.shape} on {noisy_audio.device}")
+    # Create dummy 4D input tensors
+    # Shape: [batch_size, 1, 1, time_steps] - matches ECG denoising pipeline
+    clean_audio_4d = torch.randn(batch_size, 1, 1, signal_length).to(device)
+    noisy_audio_4d = clean_audio_4d + torch.randn_like(clean_audio_4d) * 0.1
 
-    # Test forward pass (training mode)
+    print(f"\nInput shapes (4D format):")
+    print(f"  clean_audio: {clean_audio_4d.shape} on {clean_audio_4d.device}")
+    print(f"  noisy_audio: {noisy_audio_4d.shape} on {noisy_audio_4d.device}")
+
+    # Test forward pass (training mode) with 4D input
     try:
         model.train()
-        loss = model(clean_audio, noisy_audio)
-        print(f"\n✓ Training forward pass successful")
-        print(f"  Loss value: {loss.item():.6f}")
-        print(f"  Loss shape: {loss.shape}")
+        loss_4d = model(clean_audio_4d, noisy_audio_4d)
+        print(f"\n✓ Training forward pass successful (4D input)")
+        print(f"  Loss value: {loss_4d.item():.6f}")
+        print(f"  Loss shape: {loss_4d.shape}")
+
+        # Validate loss is scalar
+        assert loss_4d.shape == torch.Size([]), f"Expected scalar loss, got shape {loss_4d.shape}"
+        print(f"  ✓ Loss is scalar as expected")
 
         # Test backward pass
-        loss.backward()
-        print(f"✓ Backward pass successful")
+        loss_4d.backward()
+        print(f"✓ Backward pass successful (4D input)")
 
     except Exception as e:
-        print(f"\n✗ Training forward pass failed: {e}")
+        print(f"\n✗ Training forward pass failed (4D input): {e}")
         import traceback
         traceback.print_exc()
         return False
 
-    # Test inference (denoising mode)
+    # Test inference (denoising mode) with 4D input
     try:
         model.eval()
         with torch.no_grad():
-            denoised_audio = model.denoising(noisy_audio)
-        print(f"\n✓ Inference (denoising) pass successful")
-        print(f"  Output shape: {denoised_audio.shape}")
-        print(f"  Input signal range: [{noisy_audio.min():.4f}, {noisy_audio.max():.4f}]")
-        print(f"  Output signal range: [{denoised_audio.min():.4f}, {denoised_audio.max():.4f}]")
+            denoised_audio_4d = model.denoising(noisy_audio_4d)
+        print(f"\n✓ Inference (denoising) pass successful (4D input)")
+        print(f"  Output shape: {denoised_audio_4d.shape}")
+
+        # Validate output shape matches input shape
+        assert denoised_audio_4d.shape == noisy_audio_4d.shape, \
+            f"Output shape {denoised_audio_4d.shape} doesn't match input shape {noisy_audio_4d.shape}"
+        assert denoised_audio_4d.shape == (batch_size, 1, 1, signal_length), \
+            f"Expected shape ({batch_size}, 1, 1, {signal_length}), got {denoised_audio_4d.shape}"
+        print(f"  ✓ Output shape matches input shape (4D preserved)")
+
+        print(f"  Input signal range: [{noisy_audio_4d.min():.4f}, {noisy_audio_4d.max():.4f}]")
+        print(f"  Output signal range: [{denoised_audio_4d.min():.4f}, {denoised_audio_4d.max():.4f}]")
 
     except Exception as e:
-        print(f"\n✗ Inference pass failed: {e}")
+        print(f"\n✗ Inference pass failed (4D input): {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+    # =======================================================================
+    # Test 2: 3D Input Format (Backward Compatibility)
+    # =======================================================================
+    print(f"\n{'─'*60}")
+    print(f"Test 2: 3D Input Format (batch, 1, time) - Backward Compatibility")
+    print(f"{'─'*60}")
+
+    # Create dummy 3D input tensors
+    # Shape: [batch_size, 1, time_steps] - original format
+    clean_audio_3d = torch.randn(batch_size, 1, signal_length).to(device)
+    noisy_audio_3d = clean_audio_3d + torch.randn_like(clean_audio_3d) * 0.1
+
+    print(f"\nInput shapes (3D format):")
+    print(f"  clean_audio: {clean_audio_3d.shape} on {clean_audio_3d.device}")
+    print(f"  noisy_audio: {noisy_audio_3d.shape} on {noisy_audio_3d.device}")
+
+    # Test forward pass (training mode) with 3D input
+    try:
+        model.train()
+        loss_3d = model(clean_audio_3d, noisy_audio_3d)
+        print(f"\n✓ Training forward pass successful (3D input)")
+        print(f"  Loss value: {loss_3d.item():.6f}")
+        print(f"  Loss shape: {loss_3d.shape}")
+
+        # Validate loss is scalar
+        assert loss_3d.shape == torch.Size([]), f"Expected scalar loss, got shape {loss_3d.shape}"
+        print(f"  ✓ Loss is scalar as expected")
+
+        # Test backward pass
+        loss_3d.backward()
+        print(f"✓ Backward pass successful (3D input)")
+
+    except Exception as e:
+        print(f"\n✗ Training forward pass failed (3D input): {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+    # Test inference (denoising mode) with 3D input
+    try:
+        model.eval()
+        with torch.no_grad():
+            denoised_audio_3d = model.denoising(noisy_audio_3d)
+        print(f"\n✓ Inference (denoising) pass successful (3D input)")
+        print(f"  Output shape: {denoised_audio_3d.shape}")
+
+        # Validate output shape matches input shape
+        assert denoised_audio_3d.shape == noisy_audio_3d.shape, \
+            f"Output shape {denoised_audio_3d.shape} doesn't match input shape {noisy_audio_3d.shape}"
+        assert denoised_audio_3d.shape == (batch_size, 1, signal_length), \
+            f"Expected shape ({batch_size}, 1, {signal_length}), got {denoised_audio_3d.shape}"
+        print(f"  ✓ Output shape matches input shape (3D preserved)")
+
+        print(f"  Input signal range: [{noisy_audio_3d.min():.4f}, {noisy_audio_3d.max():.4f}]")
+        print(f"  Output signal range: [{denoised_audio_3d.min():.4f}, {denoised_audio_3d.max():.4f}]")
+
+    except Exception as e:
+        print(f"\n✗ Inference pass failed (3D input): {e}")
         import traceback
         traceback.print_exc()
         return False
@@ -143,7 +231,7 @@ def main():
             continue
 
         try:
-            success = test_forward_pass(config_path, feature_type)
+            success = _run_forward_pass(config_path, feature_type)
             results[feature_type] = success
         except Exception as e:
             print(f"\n✗ Test failed for {feature_type}: {e}")

@@ -32,6 +32,38 @@ def calculate_rmse(clean_signal: np.ndarray, denoised_signal: np.ndarray) -> flo
     return np.sqrt(np.mean((clean_signal - denoised_signal) ** 2))
 
 
+def run_denoise_inference(model: nn.Module, input_tensor: torch.Tensor,
+                          is_stage2: bool = False) -> np.ndarray:
+    """
+    Run model inference with automatic detection of MECGE vs standard models.
+
+    Args:
+        model: The denoising model (MECGE or standard)
+        input_tensor: Input tensor on appropriate device
+        is_stage2: Whether this is a Stage2 model (with 2-channel input)
+
+    Returns:
+        Numpy array of predictions with batch and channel dims squeezed
+
+    Note:
+        Stage2 MECGE models are not supported and will fall back to standard forward pass.
+    """
+    is_mecge = hasattr(model, 'denoising')
+
+    # Stage2 MECGE path is unsupported (would pass invalid shape B,2,1,T)
+    if is_stage2 and is_mecge:
+        # Fallback to standard forward pass for Stage2 MECGE
+        pred = model(input_tensor)
+    elif is_mecge:
+        # Use MECGE's dedicated inference method for Stage1
+        pred = model.denoising(input_tensor)
+    else:
+        # Standard model forward pass
+        pred = model(input_tensor)
+
+    return pred.squeeze().cpu().numpy()
+
+
 # ============================================================================
 # PyTorch Dataset
 # ============================================================================
@@ -245,6 +277,10 @@ def get_model(model_type: str, input_length: int = 5000,
     mecge_path = os.path.join(os.path.dirname(__file__), '../denoising_models/my_MECG-E')
     sys.path.insert(0, mecge_path)
 
+    # Add mamba_stft_unet folder to path (it's in denoising_models/mamba_stft_unet)
+    mamba_stft_unet_path = os.path.join(os.path.dirname(__file__), '../denoising_models/mamba_stft_unet')
+    sys.path.insert(0, mamba_stft_unet_path)
+
     model_type = model_type.lower()
 
     if model_type == 'fcn':
@@ -258,6 +294,10 @@ def get_model(model_type: str, input_length: int = 5000,
     elif model_type == 'unet':
         from Stage1_Unet import UNet
         base_model = UNet(in_channels=1)
+        model = DenoisingModelWrapper(base_model, input_length)
+    elif model_type == 'mamba_stft_unet':
+        from model import TinyMambaSTFTUNet
+        base_model = TinyMambaSTFTUNet()
         model = DenoisingModelWrapper(base_model, input_length)
     elif model_type == 'stage2' or model_type == 'drnet':
         from Stage2_model3 import DRnet

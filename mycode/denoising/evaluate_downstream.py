@@ -130,8 +130,28 @@ def denoise_12lead_signal(noisy_12lead, denoising_model, device, batch_size=32,
     denoising_model.eval()
     is_stage2 = stage1_model is not None
 
+    # Detect if main denoising model is MECGE
+    is_mecge = hasattr(denoising_model, 'denoising')
+
     if is_stage2:
         stage1_model.eval()
+        # Detect if Stage1 model is MECGE
+        is_stage1_mecge = hasattr(stage1_model, 'denoising')
+
+        # Guard: Stage2 MECGE is an unusual configuration
+        if is_mecge:
+            print(f"  WARNING: Stage2 MECGE detected. MECGE expects single-channel input.")
+            print(f"  Will use MECGE on original noisy signal, bypassing Stage1 concatenation.")
+    else:
+        is_stage1_mecge = False
+
+    # Informative logging
+    if is_mecge and not is_stage2:
+        print(f"  Using MECGE denoising method for {n_leads}-lead processing")
+    elif is_mecge and is_stage2:
+        print(f"  Using MECGE denoising method (Stage2 configuration, special handling)")
+    else:
+        print(f"  Using standard forward pass for {n_leads}-lead processing")
 
     # Process each lead
     for lead_idx in range(n_leads):
@@ -147,18 +167,30 @@ def denoise_12lead_signal(noisy_12lead, denoising_model, device, batch_size=32,
 
             with torch.no_grad():
                 if is_stage2:
-                    # For Stage2: need to concatenate noisy signal with Stage1 output
-                    # 1. Get Stage1 output
-                    stage1_output = stage1_model(batch_tensor)  # (batch, 1, 1, time)
+                    # Special case: Stage2 MECGE expects single-channel, not concatenated input
+                    # Branch early to skip unnecessary Stage1 computation
+                    if is_mecge:
+                        # Use original noisy signal for MECGE, bypassing Stage1 entirely
+                        denoised_batch = denoising_model.denoising(batch_tensor)  # (batch, 1, 1, time)
+                    else:
+                        # Standard Stage2 model: need to concatenate noisy signal with Stage1 output
+                        # 1. Get Stage1 output using appropriate inference method
+                        if is_stage1_mecge:
+                            stage1_output = stage1_model.denoising(batch_tensor)  # (batch, 1, 1, time)
+                        else:
+                            stage1_output = stage1_model(batch_tensor)  # (batch, 1, 1, time)
 
-                    # 2. Concatenate along channel dimension: (batch, 2, 1, time)
-                    stage2_input = torch.cat([batch_tensor, stage1_output], dim=1)
+                        # 2. Concatenate along channel dimension: (batch, 2, 1, time)
+                        stage2_input = torch.cat([batch_tensor, stage1_output], dim=1)
 
-                    # 3. Pass through Stage2
-                    denoised_batch = denoising_model(stage2_input)  # (batch, 1, 1, time)
+                        # 3. Pass through Stage2
+                        denoised_batch = denoising_model(stage2_input)  # (batch, 1, 1, time)
                 else:
-                    # For Stage1: direct pass
-                    denoised_batch = denoising_model(batch_tensor)  # (batch, 1, 1, time)
+                    # For Stage1: direct pass using appropriate inference method
+                    if is_mecge:
+                        denoised_batch = denoising_model.denoising(batch_tensor)  # (batch, 1, 1, time)
+                    else:
+                        denoised_batch = denoising_model(batch_tensor)  # (batch, 1, 1, time)
 
                 denoised_batch = denoised_batch.squeeze(1).permute(0, 2, 1).cpu().numpy()
 

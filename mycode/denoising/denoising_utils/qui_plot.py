@@ -14,7 +14,7 @@ from tqdm import tqdm
 from multiprocessing import Pool, cpu_count
 from itertools import repeat
 
-from .utils import get_model
+from .utils import get_model, run_denoise_inference
 from ecg_noise_factory.noise import NoiseFactory
 
 
@@ -193,6 +193,13 @@ def qui_plot(noise_configs, exp_folder, config, clean_test, models, n_bootstrap_
                 stage1_model = stage1_model.to(device)
                 stage1_model.eval()
 
+                # Detect if Stage1 is MECGE model
+                is_stage1_mecge = hasattr(stage1_model, 'denoising')
+                if is_stage1_mecge:
+                    tqdm.write(f"    Using MECGE denoising method for Stage1 ({stage1_config['type']})")
+                else:
+                    tqdm.write(f"    Using standard forward pass for Stage1 ({stage1_config['type']})")
+
                 # Generate Stage1 predictions
                 stage1_predictions = []
                 with torch.no_grad():
@@ -201,8 +208,8 @@ def qui_plot(noise_configs, exp_folder, config, clean_test, models, n_bootstrap_
                         noisy_sample = torch.FloatTensor(noisy_sample).permute(1, 0).unsqueeze(0).unsqueeze(0)
                         noisy_sample = noisy_sample.to(device)
 
-                        stage1_pred = stage1_model(noisy_sample)
-                        stage1_pred = stage1_pred.squeeze().cpu().numpy()
+                        # Use helper for inference (handles MECGE vs standard)
+                        stage1_pred = run_denoise_inference(stage1_model, noisy_sample, is_stage2=False)
                         stage1_predictions.append(stage1_pred)
 
                 stage1_predictions = np.array(stage1_predictions)
@@ -216,6 +223,17 @@ def qui_plot(noise_configs, exp_folder, config, clean_test, models, n_bootstrap_
             model.load_state_dict(torch.load(model_path, map_location=device))
             model = model.to(device)
             model.eval()
+
+            # Detect if main model is MECGE
+            is_mecge = hasattr(model, 'denoising')
+
+            # Guard: Stage2 MECGE is unsupported (would pass invalid shape B,2,1,T)
+            if is_stage2 and is_mecge:
+                tqdm.write(f"    WARNING: Stage2 MECGE is unsupported, using standard forward pass for {model_name}")
+            elif is_mecge:
+                tqdm.write(f"    Using MECGE denoising method for {model_name}")
+            else:
+                tqdm.write(f"    Using standard forward pass for {model_name}")
 
             # Generate predictions
             predictions = []
@@ -236,8 +254,9 @@ def qui_plot(noise_configs, exp_folder, config, clean_test, models, n_bootstrap_
                         model_input = noisy_sample
 
                     model_input = model_input.to(device)
-                    pred = model(model_input)
-                    pred = pred.squeeze().cpu().numpy()  # Remove batch and channel dims
+
+                    # Use helper for inference (handles MECGE vs standard with Stage2 guard)
+                    pred = run_denoise_inference(model, model_input, is_stage2=is_stage2)
                     predictions.append(pred)
 
             predictions = np.array(predictions)
