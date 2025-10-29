@@ -14,12 +14,18 @@ def remove_bad_labels(data: np.ndarray, labels: pd.DataFrame) -> Tuple[np.ndarra
     Following Hu et al. 2024: exclude signals with baseline drift, static noise,
     burst noise, and electrode problems.
     """
-    good_labels = labels[
-        labels[['baseline_drift', 'static_noise', 'burst_noise', 'electrodes_problems']]
-        .isna().all(axis=1)
-    ]
-    good_signals = data[good_labels.index.to_numpy()]
-    print(f'Removed {len(labels) - len(good_labels)} samples, kept {len(good_labels)}')
+    # Assert that data and labels have matching dimensions
+    assert len(data) == len(labels), \
+        f"Data and labels dimension mismatch: data has {len(data)} samples, labels has {len(labels)} samples"
+
+    # Create boolean mask
+    mask = labels[['baseline_drift', 'static_noise', 'burst_noise', 'electrodes_problems']].isna().all(axis=1)
+
+    # Apply mask to both data and labels using boolean indexing
+    good_signals = data[mask.to_numpy()]
+    good_labels = labels[mask].reset_index(drop=True)
+
+    print(f'Removed {(~mask).sum()} samples, kept {mask.sum()}')
     return good_signals, good_labels
 
 
