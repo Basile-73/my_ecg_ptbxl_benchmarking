@@ -33,7 +33,7 @@ def evaluate_experiment(y_true, y_pred, thresholds=None):
 
     # label based metric
     results['macro_auc'] = roc_auc_score(y_true, y_pred, average='macro')
-    
+
     df_result = pd.DataFrame(results, index=[0])
     return df_result
 
@@ -49,14 +49,14 @@ def challenge_metrics(y_true, y_pred, beta1=2, beta2=2, class_weights=None, sing
         TP, FP, TN, FN = 0.,0.,0.,0.
         for i in range(len(y_predi)):
             sample_weight = sample_weights[i]
-            if y_truei[i]==y_predi[i]==1: 
+            if y_truei[i]==y_predi[i]==1:
                 TP += 1./sample_weight
-            if ((y_predi[i]==1) and (y_truei[i]!=y_predi[i])): 
+            if ((y_predi[i]==1) and (y_truei[i]!=y_predi[i])):
                 FP += 1./sample_weight
-            if y_truei[i]==y_predi[i]==0: 
+            if y_truei[i]==y_predi[i]==0:
                 TN += 1./sample_weight
-            if ((y_predi[i]==0) and (y_truei[i]!=y_predi[i])): 
-                FN += 1./sample_weight 
+            if ((y_predi[i]==0) and (y_truei[i]!=y_predi[i])):
+                FN += 1./sample_weight
         f_beta_i = ((1+beta1**2)*TP)/((1+beta1**2)*TP + FP + (beta1**2)*FN)
         g_beta_i = (TP)/(TP+FP+beta2*FN)
 
@@ -76,7 +76,7 @@ def get_appropriate_bootstrap_samples(y_true, n_bootstraping_samples):
     return samples
 
 def find_optimal_cutoff_threshold(target, predicted):
-    """ 
+    """
     Find the optimal probability cutoff point for a classification model related to event rate
     """
     fpr, tpr, threshold = roc_curve(target, predicted)
@@ -114,7 +114,7 @@ def apply_thresholds(preds, thresholds):
 # DATA PROCESSING STUFF
 
 def load_dataset(path, sampling_rate, release=False):
-    if path.split('/')[-2] == 'ptbxl':
+    if path.split('/')[-3] == 'ptb-xl':
         # load and convert annotation data
         Y = pd.read_csv(path+'ptbxl_database.csv', index_col='ecg_id')
         Y.scp_codes = Y.scp_codes.apply(lambda x: ast.literal_eval(x))
@@ -283,7 +283,7 @@ def select_data(XX,YY, ctype, min_samples, outputfolder):
         mlb.fit(Y.form.values)
         y = mlb.transform(Y.form.values)
     elif ctype == 'rhythm':
-        # filter 
+        # filter
         counts = pd.Series(np.concatenate(YY.rhythm.values)).value_counts()
         counts = counts[counts > min_samples]
         YY.rhythm = YY.rhythm.apply(lambda x: list(set(x).intersection(set(counts.index.values))))
@@ -294,7 +294,7 @@ def select_data(XX,YY, ctype, min_samples, outputfolder):
         mlb.fit(Y.rhythm.values)
         y = mlb.transform(Y.rhythm.values)
     elif ctype == 'all':
-        # filter 
+        # filter
         counts = pd.Series(np.concatenate(YY.all_scp.values)).value_counts()
         counts = counts[counts > min_samples]
         YY.all_scp = YY.all_scp.apply(lambda x: list(set(x).intersection(set(counts.index.values))))
@@ -317,7 +317,7 @@ def preprocess_signals(X_train, X_validation, X_test, outputfolder):
     # Standardize data such that mean 0 and variance 1
     ss = StandardScaler()
     ss.fit(np.vstack(X_train).flatten()[:,np.newaxis].astype(float))
-    
+
     # Save Standardizer data
     with open(outputfolder+'standard_scaler.pkl', 'wb') as ss_file:
         pickle.dump(ss, ss_file)
@@ -352,23 +352,23 @@ def generate_ptbxl_summary_table(selection=None, folder='../output/'):
         else:
             models = models.union(set(exp_models))
 
-    results_dic = {'Method':[], 
-                'exp0_AUC':[], 
-                'exp1_AUC':[], 
-                'exp1.1_AUC':[], 
-                'exp1.1.1_AUC':[], 
+    results_dic = {'Method':[],
+                'exp0_AUC':[],
+                'exp1_AUC':[],
+                'exp1.1_AUC':[],
+                'exp1.1.1_AUC':[],
                 'exp2_AUC':[],
                 'exp3_AUC':[]
                 }
 
     for m in models:
         results_dic['Method'].append(m)
-        
+
         for e in exps:
-            
+
             try:
                 me_res = pd.read_csv(folder+str(e)+'/models/'+str(m)+'/results/te_results.csv', index_col=0)
-    
+
                 mean1 = me_res.loc['point'][metric1]
                 unc1 = max(me_res.loc['upper'][metric1]-me_res.loc['point'][metric1], me_res.loc['point'][metric1]-me_res.loc['lower'][metric1])
 
@@ -376,8 +376,8 @@ def generate_ptbxl_summary_table(selection=None, folder='../output/'):
 
             except FileNotFoundError:
                 results_dic[e+'_AUC'].append("--")
-            
-            
+
+
     df = pd.DataFrame(results_dic)
     df_index = df[df.Method.isin(['naive', 'ensemble'])]
     df_rest = df[~df.Method.isin(['naive', 'ensemble'])]
@@ -390,7 +390,7 @@ def generate_ptbxl_summary_table(selection=None, folder='../output/'):
         '### 3. PTB-XL: Diagnostic subclasses',
         '### 4. PTB-XL: Diagnostic superclasses',
         '### 5. PTB-XL: Form statements',
-        '### 6. PTB-XL: Rhythm statements'        
+        '### 6. PTB-XL: Rhythm statements'
     ]
 
     # helper output function for markdown tables
@@ -411,7 +411,7 @@ def ICBEBE_table(selection=None, folder='../output/'):
     if selection is None:
         models = [m.split('/')[-1].split('_pretrained')[0] for m in glob.glob(folder+'exp_ICBEB/models/*')]
     else:
-        models = [] 
+        models = []
         for s in selection:
             #if s != 'Wavelet+NN':
                 models.append(s)

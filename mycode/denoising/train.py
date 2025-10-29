@@ -94,7 +94,7 @@ class DenoisingExperiment:
             mode='test'
         )
 
-        print("✓ Created train and test noise factories (prevents data leakage)")
+        print("Created train and test noise factories (prevents data leakage)")
 
     def prepare(self):
         """Prepare and preprocess data."""
