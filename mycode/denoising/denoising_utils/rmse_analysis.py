@@ -9,9 +9,10 @@ import os
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+import torch
 from tqdm import tqdm
 
-from .utils import calculate_snr, calculate_rmse
+from .utils import calculate_snr, calculate_rmse, run_denoise_inference
 
 
 def analyze_rmse_variance(noise_configs, exp_folder, config, clean_val, models):
@@ -134,6 +135,13 @@ def analyze_rmse_variance(noise_configs, exp_folder, config, clean_val, models):
                 stage1_model = stage1_model.to(device)
                 stage1_model.eval()
 
+                # Detect if Stage1 is MECGE model
+                is_stage1_mecge = hasattr(stage1_model, 'denoising')
+                if is_stage1_mecge:
+                    print(f"    Using MECGE denoising method for Stage1 ({stage1_config['type']})")
+                else:
+                    print(f"    Using standard forward pass for Stage1 ({stage1_config['type']})")
+
                 stage1_predictions = []
                 with torch.no_grad():
                     for i in range(len(clean_val)):
@@ -141,8 +149,8 @@ def analyze_rmse_variance(noise_configs, exp_folder, config, clean_val, models):
                         noisy_sample = torch.FloatTensor(noisy_sample).permute(1, 0).unsqueeze(0).unsqueeze(0)
                         noisy_sample = noisy_sample.to(device)
 
-                        stage1_pred = stage1_model(noisy_sample)
-                        stage1_pred = stage1_pred.squeeze().cpu().numpy()
+                        # Use helper for inference (handles MECGE vs standard)
+                        stage1_pred = run_denoise_inference(stage1_model, noisy_sample, is_stage2=False)
                         stage1_predictions.append(stage1_pred)
 
                 stage1_predictions = np.array(stage1_predictions)
@@ -154,6 +162,17 @@ def analyze_rmse_variance(noise_configs, exp_folder, config, clean_val, models):
             model.load_state_dict(torch.load(model_path, map_location=device))
             model = model.to(device)
             model.eval()
+
+            # Detect if main model is MECGE
+            is_mecge = hasattr(model, 'denoising')
+
+            # Guard: Stage2 MECGE is unsupported (would pass invalid shape B,2,1,T)
+            if is_stage2 and is_mecge:
+                print(f"    WARNING: Stage2 MECGE is unsupported, using standard forward pass for {model_name}")
+            elif is_mecge:
+                print(f"    Using MECGE denoising method for {model_name}")
+            else:
+                print(f"    Using standard forward pass for {model_name}")
 
             # Generate predictions and calculate RMSE for each sample
             predictions = []
@@ -173,8 +192,9 @@ def analyze_rmse_variance(noise_configs, exp_folder, config, clean_val, models):
                         model_input = noisy_sample
 
                     model_input = model_input.to(device)
-                    pred = model(model_input)
-                    pred = pred.squeeze().cpu().numpy()
+
+                    # Use helper for inference (handles MECGE vs standard with Stage2 guard)
+                    pred = run_denoise_inference(model, model_input, is_stage2=is_stage2)
                     predictions.append(pred)
 
                     # Calculate metrics

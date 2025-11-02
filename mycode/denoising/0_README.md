@@ -113,7 +113,12 @@ Available models:
 - **FCN**: Fast Convolutional Network (~500K params) - Stage1
 - **UNet**: U-Net architecture (~600K params) - Stage1
 - **IMUnet**: Improved U-Net (~1M params) - Stage1
+- **MECG-E (Phase)**: Mamba-based ECG Enhancer using magnitude+phase features (~2.8M params) - Stage1
+- **MECG-E (Complex)**: Mamba-based ECG Enhancer using complex features (~2.8M params) - Stage1
+- **MECG-E (Wav)**: Mamba-based ECG Enhancer using waveform features (~2.7M params) - Stage1
 - **DRnet (Stage2)**: Two-stage reconstruction model - Uses Stage1 output + noisy signal
+
+**Note on MECG-E**: A state-of-the-art Mamba-based denoiser with fast inference and excellent performance under noisy conditions. Based on "MECG-E: Mamba-based ECG Enhancer for Baseline Wander Removal" (arXiv:2409.18828).
 
 ### Two-Stage Training
 
@@ -199,6 +204,101 @@ Stage2 models can use Stage1 models from previous runs without retraining them:
 
 This allows flexible experimentation without wasting compute on retraining Stage1 models.
 
+### MECG-E Models
+
+MECG-E is a state-of-the-art Mamba-based ECG denoiser integrated into this pipeline. It offers three variants based on different feature representations:
+
+#### Available MECG-E Variants
+
+```yaml
+models:
+  - name: "mecge_phase"
+    type: "mecge_phase"  # Magnitude+phase STFT features (best performance)
+    epochs: 50
+    lr: 0.001
+    batch_size: 32
+
+  - name: "mecge_complex"
+    type: "mecge_complex"  # Complex STFT features
+    epochs: 50
+    lr: 0.001
+    batch_size: 32
+
+  - name: "mecge_wav"
+    type: "mecge_wav"  # Waveform features (fastest, simpler loss)
+    epochs: 50
+    lr: 0.001
+    batch_size: 32
+```
+
+**Variant Details:**
+- **`mecge_phase`**: Uses magnitude+phase STFT features with combined loss (time+complex+consistency). Typically achieves best performance.
+- **`mecge_complex`**: Uses complex STFT features with combined loss. Good balance of performance and complexity.
+- **`mecge_wav`**: Uses waveform features with time-domain loss only. Fastest training, simpler architecture.
+
+#### Unique Training Interface
+
+MECG-E has a different training interface compared to other models:
+- **During training:** `forward(clean, noisy)` returns loss directly (no external MSE loss needed)
+- **During inference:** `denoising(noisy)` returns denoised predictions
+
+The pipeline automatically detects MECG-E models using `hasattr(model, 'denoising')` and handles them appropriately. **Users don't need to do anything special** - just specify the model type.
+
+#### Configuration Requirements
+
+MECG-E uses internal YAML configuration files located in `denoising_models/my_MECG-E/config/`:
+- `MECGE_phase.yaml` - Configuration for phase variant
+- `MECGE_complex.yaml` - Configuration for complex variant
+- `MECGE_wav.yaml` - Configuration for waveform variant
+
+These configs are automatically loaded based on the model type. Users can modify these files to adjust MECG-E hyperparameters such as:
+- STFT parameters (n_fft, hop_length, win_length)
+- Mamba block configuration (d_model, d_state, d_conv)
+- Loss function weights (time_weight, complex_weight, consistency_weight)
+
+#### Using MECG-E with Stage2 Models
+
+MECG-E can serve as a Stage1 model for Stage2/DRnet refinement:
+
+```yaml
+models:
+  # Stage 1: Train MECG-E
+  - name: "mecge_phase"
+    type: "mecge_phase"
+    epochs: 50
+    lr: 0.001
+    batch_size: 32
+
+  # Stage 2: Train DRnet using MECG-E output
+  - name: "drnet_mecge"
+    type: "stage2"
+    stage1_model: "mecge_phase"  # Use MECG-E as Stage1
+    epochs: 50
+    lr: 0.001
+    batch_size: 32
+```
+
+This combines MECG-E's strong denoising capabilities with Stage2 refinement for even better results.
+
+#### Special Considerations
+
+**Input/Output Format:**
+- MECG-E accepts 4D tensors `(batch, 1, 1, time)` matching other Stage1 models
+- Also supports 3D `(batch, 1, time)` for backward compatibility
+- Output shape always matches input shape
+
+**Loss Computation:**
+- MECG-E computes loss internally using a combination of:
+  - Time-domain loss: MSE between clean and denoised waveforms
+  - Frequency-domain loss: MSE in STFT complex domain (phase/complex variants)
+  - Consistency loss: Ensures STFT magnitude/phase consistency (phase/complex variants)
+- Loss weights configured in YAML files
+
+**Performance:**
+- Inference speed: Faster than diffusion-based denoisers, comparable to CNN-based models
+- Memory usage: STFT transformations may require more memory than simple CNNs
+- Variable-length inputs: MECG-E handles different signal lengths natively through STFT (no wrapper needed)
+
 ### Noise Configuration
 
 Noise specifications are defined in a separate YAML file (e.g., `code/noise/config/default.yaml`):
@@ -275,6 +375,53 @@ output/{experiment_name}/
 
 ## Usage Examples
 
+### Train MECG-E Models
+
+**Train single MECG-E variant:**
+```yaml
+models:
+  - name: "mecge_phase"
+    type: "mecge_phase"
+    epochs: 50
+    lr: 0.001
+    batch_size: 32
+```
+
+**Compare all MECG-E variants:**
+```yaml
+models:
+  - name: "mecge_phase"
+    type: "mecge_phase"
+    epochs: 50
+    lr: 0.001
+    batch_size: 32
+  - name: "mecge_complex"
+    type: "mecge_complex"
+    epochs: 50
+    lr: 0.001
+    batch_size: 32
+  - name: "mecge_wav"
+    type: "mecge_wav"
+    epochs: 50
+    lr: 0.001
+    batch_size: 32
+```
+
+**Compare MECG-E with traditional models:**
+```yaml
+models:
+  - name: "fcn"
+    type: "fcn"
+    epochs: 50
+    lr: 0.001
+    batch_size: 32
+  - name: "mecge_phase"
+    type: "mecge_phase"
+    epochs: 50
+    lr: 0.001
+    batch_size: 32
+```
+
 ### Use different noise configurations
 
 Create custom noise config file (e.g., `custom_noise.yaml`):
@@ -326,10 +473,20 @@ Core requirements:
 - SciPy
 - tqdm
 
+**MECG-E specific dependencies:**
+- Mamba SSM package (installed from `denoising_models/my_MECG-E/mamba/`)
+- CUDA >= 12.0 (recommended for optimal Mamba performance)
+- Note: The Mamba package is included as part of the my_MECG-E submodule
+
 Install from existing environment:
 ```bash
 conda env create -f ../../ecg_env.yml
 conda activate ecg_benchmarking
+
+# For MECG-E support, additionally install Mamba:
+cd denoising_models/my_MECG-E/mamba
+pip install .
+cd ../../..
 ```
 
 ## Reproducibility
@@ -344,6 +501,7 @@ All experiments are seeded for reproducibility:
 - PTB-XL: A large publicly available electrocardiography dataset
 - Hu et al. (2024): Bad label removal for ECG signals
 - Dias et al. (2024): Lead selection based on peak detection
+- Hung et al. (2024): MECG-E: Mamba-based ECG Enhancer for Baseline Wander Removal (arXiv:2409.18828)
 
 ## Troubleshooting
 
@@ -360,6 +518,25 @@ All experiments are seeded for reproducibility:
   ```bash
   pip install -e ../../ecg_noise
   ```
+
+### MECG-E import errors
+- Ensure the my_MECG-E submodule is properly initialized:
+  ```bash
+  git submodule update --init --recursive
+  ```
+- Check that Mamba package is installed:
+  ```bash
+  cd denoising_models/my_MECG-E/mamba && pip install .
+  ```
+- Verify CUDA version >= 12.0 for optimal Mamba support:
+  ```bash
+  nvcc --version
+  ```
+
+### MECG-E YAML config not found
+- Config files should be in `denoising_models/my_MECG-E/config/`
+- Check that the submodule includes: `MECGE_phase.yaml`, `MECGE_complex.yaml`, `MECGE_wav.yaml`
+- If missing, reinitialize the submodule or check the repository structure
 
 ## Notes
 
