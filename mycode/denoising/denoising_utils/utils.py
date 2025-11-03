@@ -299,6 +299,10 @@ def get_model(model_type: str, input_length: int = 5000,
         from model import TinyMambaSTFTUNet
         base_model = TinyMambaSTFTUNet()
         model = DenoisingModelWrapper(base_model, input_length)
+    elif model_type == 'mamba_stft_unet_v2':
+        from model_v2 import TinyMambaSTFTUNetV2
+        base_model = TinyMambaSTFTUNetV2()
+        model = DenoisingModelWrapper(base_model, input_length)
     elif model_type == 'stage2' or model_type == 'drnet':
         from Stage2_model3 import DRnet
         base_model = DRnet(in_channels=2)  # 2 channels: noisy + stage1 output
