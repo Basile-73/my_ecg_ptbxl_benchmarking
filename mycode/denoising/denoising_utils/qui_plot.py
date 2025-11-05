@@ -100,7 +100,12 @@ def qui_plot(noise_configs, exp_folder, config, clean_test, models, n_bootstrap_
         'unet': '#ff9896',        # Light red (Stage1)
         'drnet_unet': '#d62728',  # Dark red (Stage2)
         'imunet': '#98df8a',      # Light green (Stage1)
-        'drnet_imunet': '#2ca02c' # Dark green (Stage2)
+        'drnet_imunet': '#2ca02c', # Dark green (Stage2)
+        'imunet_origin': '#9467bd',    # Purple
+        'imunet_mamba_bn': '#ff7f0e',  # Orange
+        'imunet_mamba_up': '#17becf',  # Cyan/Teal
+        'imunet_mamba_early': '#e377c2', # Magenta/Pink
+        'imunet_mamba_late': '#bcbd22'  # Yellow-green
     }
 
     # Setup device
@@ -384,6 +389,7 @@ def qui_plot(noise_configs, exp_folder, config, clean_test, models, n_bootstrap_
     # Plot 1: RMSE
     ax1 = axes[0]
     x_pos = 0
+    max_rmse_y = 0
 
     for config_idx, noise_config in enumerate(noise_configs):
         config_name = noise_config['name']
@@ -409,6 +415,15 @@ def qui_plot(noise_configs, exp_folder, config, clean_test, models, n_bootstrap_
                        color=color, alpha=0.8, edgecolor='black', linewidth=0.5,
                        label=model_name if config_idx == 0 else '')
 
+                # Add text label on top of bar
+                ax1.text(bar_pos, point_rmse + upper_err + 0.001, f'{point_rmse:.3f}',
+                        ha='center', va='bottom', fontsize=8, color='black',
+                        bbox=dict(boxstyle='round,pad=0.3', facecolor='white',
+                                 edgecolor='none', alpha=0.7))
+
+                # Track maximum y value
+                max_rmse_y = max(max_rmse_y, point_rmse + upper_err)
+
         group_center = x_pos + (n_models - 1) * bar_width / 2
         config_positions.append(group_center)
         config_labels.append(config_name.upper())
@@ -420,11 +435,13 @@ def qui_plot(noise_configs, exp_folder, config, clean_test, models, n_bootstrap_
     ax1.set_xticks(config_positions)
     ax1.set_xticklabels(config_labels, fontsize=11)
     ax1.grid(True, alpha=0.3, axis='y')
-    ax1.legend(loc='upper right', fontsize=9)
+    ax1.set_ylim(bottom=0, top=max_rmse_y * 1.15)
+    ax1.legend(loc='lower right', fontsize=9)
 
     # Plot 2: Output SNR (changed from SNR Improvement)
     ax2 = axes[1]
     x_pos = 0
+    max_snr_y = 0
 
     for config_idx, noise_config in enumerate(noise_configs):
         config_name = noise_config['name']
@@ -450,6 +467,15 @@ def qui_plot(noise_configs, exp_folder, config, clean_test, models, n_bootstrap_
                        color=color, alpha=0.8, edgecolor='black', linewidth=0.5,
                        label=model_name if config_idx == 0 else '')
 
+                # Add text label on top of bar
+                ax2.text(bar_pos, point_snr + upper_err, f'{point_snr:.2f}',
+                        ha='center', va='bottom', fontsize=8, color='black',
+                        bbox=dict(boxstyle='round,pad=0.3', facecolor='white',
+                                 edgecolor='none', alpha=0.7))
+
+                # Track maximum y value
+                max_snr_y = max(max_snr_y, point_snr + upper_err)
+
         x_pos += group_width + 0.3
 
     ax2.set_xlabel('Noise Configuration', fontsize=12, fontweight='bold')
@@ -458,7 +484,8 @@ def qui_plot(noise_configs, exp_folder, config, clean_test, models, n_bootstrap_
     ax2.set_xticks(config_positions)
     ax2.set_xticklabels(config_labels, fontsize=11)
     ax2.grid(True, alpha=0.3, axis='y')
-    ax2.legend(loc='upper right', fontsize=9)
+    ax2.set_ylim(top=max_snr_y * 1.15)
+    ax2.legend(loc='lower right', fontsize=9)
 
     plt.tight_layout()
 

@@ -9,6 +9,7 @@ from typing import Tuple, Optional
 import sys
 import os
 import yaml
+import importlib.util
 
 
 # ============================================================================
@@ -82,9 +83,10 @@ class ECGDenoisingDataset(Dataset):
         noisy = self.noisy_signals[idx]
         clean = self.clean_signals[idx]
 
-        # Convert to torch tensors with shape (1, 1, time) for 2D convolutions
-        noisy = torch.FloatTensor(noisy).permute(2, 0, 1).unsqueeze(0)
-        clean = torch.FloatTensor(clean).permute(2, 0, 1).unsqueeze(0)
+        # Convert to torch tensors with shape (1, channels, time) for 2D convolutions
+        # Handle 2D inputs: (time, channels) -> (channels, time) -> (1, channels, time)
+        noisy = torch.FloatTensor(noisy).permute(1, 0).unsqueeze(0)
+        clean = torch.FloatTensor(clean).permute(1, 0).unsqueeze(0)
 
         return noisy, clean
 
@@ -294,6 +296,46 @@ def get_model(model_type: str, input_length: int = 5000,
     elif model_type == 'unet':
         from Stage1_Unet import UNet
         base_model = UNet(in_channels=1)
+        model = DenoisingModelWrapper(base_model, input_length)
+    elif model_type == 'imunet_origin':
+        stage_path = os.path.join(ecg_processing_path, "Stage1_1_IMUnet_origin.py")
+        spec = importlib.util.spec_from_file_location("stage_imunet_origin", stage_path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        IMUnet = module.IMUnet
+        base_model = IMUnet(in_channels=1)
+        model = DenoisingModelWrapper(base_model, input_length)
+    elif model_type == 'imunet_mamba_bn':
+        stage_path = os.path.join(ecg_processing_path, "Stage1_2_IMUnet_mamba_merge_bn.py")
+        spec = importlib.util.spec_from_file_location("stage_imunet_mamba_bn", stage_path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        IMUnet = module.IMUnet
+        base_model = IMUnet(in_channels=1)
+        model = DenoisingModelWrapper(base_model, input_length)
+    elif model_type == 'imunet_mamba_up':
+        stage_path = os.path.join(ecg_processing_path, "Stage1_3_IMUnet_mamba_merge_up.py")
+        spec = importlib.util.spec_from_file_location("stage_imunet_mamba_up", stage_path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        IMUnet = module.IMUnet
+        base_model = IMUnet(in_channels=1)
+        model = DenoisingModelWrapper(base_model, input_length)
+    elif model_type == 'imunet_mamba_early':
+        stage_path = os.path.join(ecg_processing_path, "Stage1_4_IMUnet_mamba_merge_early.py")
+        spec = importlib.util.spec_from_file_location("stage_imunet_mamba_early", stage_path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        IMUnet = module.IMUnet
+        base_model = IMUnet(in_channels=1)
+        model = DenoisingModelWrapper(base_model, input_length)
+    elif model_type == 'imunet_mamba_late':
+        stage_path = os.path.join(ecg_processing_path, "Stage1_5_IMUnet_mamba_merge_late.py")
+        spec = importlib.util.spec_from_file_location("stage_imunet_mamba_late", stage_path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        IMUnet = module.IMUnet
+        base_model = IMUnet(in_channels=1)
         model = DenoisingModelWrapper(base_model, input_length)
     elif model_type == 'mamba_stft_unet':
         from model import TinyMambaSTFTUNet

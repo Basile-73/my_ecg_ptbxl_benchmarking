@@ -31,7 +31,7 @@ from utils.utils import load_dataset
 class DenoisingExperiment:
     """Experiment class for ECG denoising, similar to NoiseRobustnessExperiment."""
 
-    def __init__(self, config_path: str = 'code/denoising/configs/denoising_config.yaml'):
+    def __init__(self, config_path: str = 'mycode/denoising/configs/test_mamba_models.yaml'):
         """Initialize experiment with config file."""
         with open(config_path, 'r') as f:
             self.config = yaml.safe_load(f)
@@ -326,7 +326,7 @@ def main():
     """Main entry point."""
     import argparse
     parser = argparse.ArgumentParser(description='Run ECG denoising experiments')
-    parser.add_argument('--config', type=str, default='code/denoising/configs/denoising_config.yaml',
+    parser.add_argument('--config', type=str, default='mycode/denoising/configs/test_mamba_models.yaml',
                        help='Path to config file')
     args = parser.parse_args()
 
