@@ -49,7 +49,7 @@ def get_appropriate_bootstrap_samples(y_true, n_bootstraping_samples):
     return samples
 
 
-def load_config(config_path='code/denoising/configs/denoising_config.yaml'):
+def load_config(config_path='mycode/denoising/configs/test_mamba_models.yaml'):
     """Load configuration."""
     with open(config_path, 'r') as f:
         return yaml.safe_load(f)
@@ -330,7 +330,7 @@ def main():
     """Main evaluation function."""
     import argparse
     parser = argparse.ArgumentParser(description='Evaluate denoising results')
-    parser.add_argument('--config', type=str, default='code/denoising/configs/denoising_config.yaml')
+    parser.add_argument('--config', type=str, default='mycode/denoising/configs/test_mamba_models.yaml')
     parser.add_argument('--report', action='store_true', help='Generate PDF report')
     args = parser.parse_args()
 
@@ -378,7 +378,9 @@ def main():
 
     # Generate and save bootstrap samples for confidence interval computation
     print("Generating bootstrap samples for confidence intervals...")
-    n_bootstrap_samples = 100  # Default value
+    # Get bootstrap samples from config, with default fallback
+    n_bootstrap_samples = config.get('evaluation', {}).get('bootstrap_samples', 100)
+    print(f"Using {n_bootstrap_samples} bootstrap samples from config")
     y_dummy = np.ones((len(clean_test), 1))  # Dummy array for bootstrap sampling
     bootstrap_samples = get_appropriate_bootstrap_samples(y_dummy, n_bootstrap_samples)
     np.save(os.path.join(exp_folder, 'data', 'bootstrap_samples.npy'),

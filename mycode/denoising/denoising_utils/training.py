@@ -28,7 +28,6 @@ def train_model(model: nn.Module, train_loader: DataLoader, val_loader: DataLoad
         Dictionary with training history
     """
     model = model.to(device)
-    criterion = nn.MSELoss()
 
     # Detect if model is MECGE (has denoising method)
     is_mecge = hasattr(model, 'denoising')
@@ -36,6 +35,89 @@ def train_model(model: nn.Module, train_loader: DataLoader, val_loader: DataLoad
         print("Detected MECGE model - using internal loss computation")
     else:
         print("Using standard model interface with external MSE loss")
+
+    # Detect if model is mamba_stft_unet (wrapped or unwrapped)
+    # Get the candidate model (unwrap if needed)
+    candidate = getattr(model, 'base_model', model)
+    is_mamba_stft_unet = False
+
+    # Try to import TinyMambaSTFTUNet for isinstance checking
+    TinyMambaSTFTUNet = None
+    try:
+        import sys
+        mamba_stft_unet_path = os.path.join(os.path.dirname(__file__), '../denoising_models/mamba_stft_unet')
+        sys.path.insert(0, mamba_stft_unet_path)
+        from model import TinyMambaSTFTUNet as _TinyMambaSTFTUNet
+        TinyMambaSTFTUNet = _TinyMambaSTFTUNet
+    except ImportError:
+        pass
+
+    # Perform detection using isinstance if import succeeded, or by class name
+    if TinyMambaSTFTUNet is not None:
+        is_mamba_stft_unet = isinstance(candidate, TinyMambaSTFTUNet) or isinstance(model, TinyMambaSTFTUNet)
+    else:
+        is_mamba_stft_unet = candidate.__class__.__name__ == 'TinyMambaSTFTUNet'
+
+    if is_mamba_stft_unet:
+        print("Detected TinyMambaSTFTUNet model - using custom L1STFTBandpassLoss")
+
+    # Detect if model is mamba_stft_unet_v2 (wrapped or unwrapped)
+    candidate = getattr(model, 'base_model', model)
+    is_mamba_stft_unet_v2 = False
+
+    # Try to import TinyMambaSTFTUNetV2 for isinstance checking
+    TinyMambaSTFTUNetV2 = None
+    try:
+        import sys
+        mamba_stft_unet_path = os.path.join(os.path.dirname(__file__), '../denoising_models/mamba_stft_unet')
+        if mamba_stft_unet_path not in sys.path:
+            sys.path.insert(0, mamba_stft_unet_path)
+        from model_v2 import TinyMambaSTFTUNetV2 as _TinyMambaSTFTUNetV2
+        TinyMambaSTFTUNetV2 = _TinyMambaSTFTUNetV2
+    except ImportError:
+        pass
+
+    # Perform detection using isinstance if import succeeded, or by class name
+    if TinyMambaSTFTUNetV2 is not None:
+        is_mamba_stft_unet_v2 = isinstance(candidate, TinyMambaSTFTUNetV2) or isinstance(model, TinyMambaSTFTUNetV2)
+    else:
+        is_mamba_stft_unet_v2 = candidate.__class__.__name__ == 'TinyMambaSTFTUNetV2'
+
+    if is_mamba_stft_unet_v2:
+        print("Detected TinyMambaSTFTUNetV2 model - using EnhancedSTFTLoss with gradient clipping")
+
+    # Conditionally instantiate the appropriate loss function
+    if is_mamba_stft_unet_v2:
+        # Import the enhanced loss only when needed
+        try:
+            import sys
+            mamba_stft_unet_path = os.path.join(os.path.dirname(__file__), '../denoising_models/mamba_stft_unet')
+            if mamba_stft_unet_path not in sys.path:
+                sys.path.insert(0, mamba_stft_unet_path)
+            from loss_v2 import EnhancedSTFTLoss
+            criterion = EnhancedSTFTLoss(sr=250, w_time=1.0, w_mr_stft=1.0, w_phase=1.0, w_complex=1.0, w_consistency=1.0, w_bandpower=0.2)
+            print("Using EnhancedSTFTLoss with sr=250, w_time=1.0, w_mr_stft=1.0, w_phase=1.0, w_complex=1.0, w_consistency=1.0, w_bandpower=0.2")
+        except ImportError as e:
+            print(f"Warning: Could not import EnhancedSTFTLoss, falling back to MSELoss. Error: {e}")
+            criterion = nn.MSELoss()
+            print("Using standard MSELoss (fallback)")
+    elif is_mamba_stft_unet:
+        # Import the custom loss only when needed
+        try:
+            import sys
+            mamba_stft_unet_path = os.path.join(os.path.dirname(__file__), '../denoising_models/mamba_stft_unet')
+            if mamba_stft_unet_path not in sys.path:
+                sys.path.insert(0, mamba_stft_unet_path)
+            from loss import L1STFTBandpassLoss
+            criterion = L1STFTBandpassLoss(sr=250, w_l1=1.0, w_stft=0.5, w_bp=0.05)
+            print("Using L1STFTBandpassLoss with sr=250, w_l1=1.0, w_stft=0.5, w_bp=0.05")
+        except ImportError as e:
+            print(f"Warning: Could not import L1STFTBandpassLoss, falling back to MSELoss. Error: {e}")
+            criterion = nn.MSELoss()
+            print("Using standard MSELoss (fallback)")
+    else:
+        criterion = nn.MSELoss()
+        print("Using standard MSELoss")
 
     # Optimizer
     if config.get('optimizer', 'adam').lower() == 'adam':
@@ -89,6 +171,11 @@ def train_model(model: nn.Module, train_loader: DataLoader, val_loader: DataLoad
                 loss = criterion(output, clean)
 
             loss.backward()
+
+            # Apply gradient clipping for v2 model only
+            if is_mamba_stft_unet_v2:
+                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=5.0)
+
             optimizer.step()
 
             train_loss += loss.item()
