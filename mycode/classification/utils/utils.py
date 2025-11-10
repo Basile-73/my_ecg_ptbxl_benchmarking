@@ -113,6 +113,34 @@ def apply_thresholds(preds, thresholds):
 
 # DATA PROCESSING STUFF
 
+def load_labels_only(path, sampling_rate):
+    """
+    Load only label data without raw signals.
+
+    This is a memory-efficient alternative to load_dataset() for cases where
+    only label information is needed (e.g., for filtering, aggregation).
+
+    Args:
+        path: Path to dataset folder
+        sampling_rate: Sampling rate (used for dataset detection logic)
+
+    Returns:
+        pd.DataFrame: Labels with 'scp_codes' parsed as dictionaries
+    """
+    if path.split('/')[-3] == 'ptb-xl':
+        # load and convert annotation data
+        Y = pd.read_csv(path+'ptbxl_database.csv', index_col='ecg_id')
+        Y.scp_codes = Y.scp_codes.apply(lambda x: ast.literal_eval(x))
+    elif path.split('/')[-2] == 'ICBEB':
+        # load and convert annotation data
+        Y = pd.read_csv(path+'icbeb_database.csv', index_col='ecg_id')
+        Y.scp_codes = Y.scp_codes.apply(lambda x: ast.literal_eval(x))
+    else:
+        raise ValueError(f"Unknown dataset structure at path: {path}")
+
+    return Y
+
+
 def load_dataset(path, sampling_rate, release=False):
     if path.split('/')[-3] == 'ptb-xl':
         # load and convert annotation data

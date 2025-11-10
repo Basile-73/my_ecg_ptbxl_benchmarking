@@ -29,6 +29,32 @@ def remove_bad_labels(data: np.ndarray, labels: pd.DataFrame) -> Tuple[np.ndarra
     return good_signals, good_labels
 
 
+def remove_bad_labels_labels_only(labels: pd.DataFrame) -> pd.DataFrame:
+    """
+    Remove labels with problematic annotations (labels-only variant).
+
+    This is a memory-efficient alternative to remove_bad_labels() for cases where
+    signal data is not needed. Uses the same filtering logic based on noise columns.
+
+    Following Hu et al. 2024: exclude signals with baseline drift, static noise,
+    burst noise, and electrode problems.
+
+    Args:
+        labels: DataFrame with noise annotation columns
+
+    Returns:
+        Filtered DataFrame with bad labels removed
+    """
+    # Create boolean mask (same logic as remove_bad_labels)
+    mask = labels[['baseline_drift', 'static_noise', 'burst_noise', 'electrodes_problems']].isna().all(axis=1)
+
+    # Apply mask to labels only
+    good_labels = labels[mask].reset_index(drop=True)
+
+    print(f'Removed {(~mask).sum()} samples, kept {mask.sum()}')
+    return good_labels
+
+
 def select_best_lead(data: np.ndarray, sampling_rate: int = 500) -> Tuple[np.ndarray, np.ndarray]:
     """
     Select the single lead with the fewest peaks for each record.
