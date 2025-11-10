@@ -35,25 +35,24 @@ def plot_loss(history_path):
 
     # Create the plot
     plt.figure(figsize=(10, 6))
-    plt.plot(epochs, train_loss, label='Training Loss', linewidth=2, marker='o', markersize=3)
-    plt.plot(epochs, val_loss, label='Validation Loss', linewidth=2, marker='s', markersize=3)
+    plt.plot(epochs, train_loss, label='Training Loss', linewidth=2, marker='o', markersize=5)
+    plt.plot(epochs, val_loss, label='Validation Loss', linewidth=2, marker='s', markersize=5)
 
-    plt.xlabel('Epoch', fontsize=12)
-    plt.ylabel('Loss', fontsize=12)
-    plt.title('Training and Validation Loss', fontsize=14, fontweight='bold')
-    plt.legend(fontsize=11)
+    plt.xlabel('Epoch', fontsize=20)
+    plt.ylabel('Loss', fontsize=20)
+    plt.title('Training and Validation Loss', fontsize=22, fontweight='bold')
+    plt.legend(fontsize=20)
     plt.grid(True, alpha=0.3)
+    plt.xticks(fontsize=16)
+    plt.yticks(fontsize=16)
 
-    # Set tight layout
     plt.tight_layout()
 
-    # Save the plot in the same folder as the JSON file
     output_dir = os.path.dirname(history_path)
     output_path = os.path.join(output_dir, 'loss_plot.png')
     plt.savefig(output_path, dpi=300, bbox_inches='tight')
     print(f"Plot saved to: {output_path}")
 
-    # Also save as PDF for publications
     output_path_pdf = os.path.join(output_dir, 'loss_plot.pdf')
     plt.savefig(output_path_pdf, bbox_inches='tight')
     print(f"Plot saved to: {output_path_pdf}")
@@ -78,12 +77,10 @@ Example:
 
     args = parser.parse_args()
 
-    # Check if file exists
     if not os.path.exists(args.history_path):
         print(f"Error: File not found: {args.history_path}")
         return 1
 
-    # Check if it's a JSON file
     if not args.history_path.endswith('.json'):
         print(f"Warning: The file does not have a .json extension: {args.history_path}")
 

@@ -378,17 +378,21 @@ def compute_bootstrap_confidence_intervals(results_df, n_bootstrap_samples=100):
         # Bootstrap SNR improvement
         snr_bootstrap_means = []
         rmse_bootstrap_means = []
+        rmse_pct_bootstrap_means = []
 
         for indices in bootstrap_indices:
             bootstrap_sample = group.iloc[indices]
             snr_bootstrap_means.append(bootstrap_sample['snr_improvement_db'].mean())
             rmse_bootstrap_means.append(bootstrap_sample['rmse_denoised'].mean())
+            rmse_pct_bootstrap_means.append(bootstrap_sample['rmse_improvement_pct'].mean())
 
         # Calculate percentiles for 90% CI
         snr_ci_lower = np.percentile(snr_bootstrap_means, 5)
         snr_ci_upper = np.percentile(snr_bootstrap_means, 95)
         rmse_ci_lower = np.percentile(rmse_bootstrap_means, 5)
         rmse_ci_upper = np.percentile(rmse_bootstrap_means, 95)
+        rmse_pct_ci_lower = np.percentile(rmse_pct_bootstrap_means, 5)
+        rmse_pct_ci_upper = np.percentile(rmse_pct_bootstrap_means, 95)
 
         ci_results.append({
             'model': model,
@@ -398,7 +402,10 @@ def compute_bootstrap_confidence_intervals(results_df, n_bootstrap_samples=100):
             'snr_ci_upper': snr_ci_upper,
             'mean_rmse_denoised': np.mean(rmse_bootstrap_means),
             'rmse_ci_lower': rmse_ci_lower,
-            'rmse_ci_upper': rmse_ci_upper
+            'rmse_ci_upper': rmse_ci_upper,
+            'mean_rmse_improvement_pct': np.mean(rmse_pct_bootstrap_means),
+            'rmse_pct_ci_lower': rmse_pct_ci_lower,
+            'rmse_pct_ci_upper': rmse_pct_ci_upper
         })
 
         print("✓")
@@ -559,13 +566,14 @@ def plot_performance_vs_training_size(summary_df, ci_df, metadata, output_folder
     print(f"✓ Saved: {pdf_path}")
 
 
-def plot_model_comparison_per_fold(summary_df, output_folder):
+def plot_model_comparison_per_fold(summary_df, ci_df, output_folder):
     """
     Create bar charts comparing models at each training data size.
-    Shows both SNR improvement and RMSE improvement percentage.
+    Shows both SNR improvement and RMSE improvement percentage with error bars.
 
     Args:
         summary_df: Summary statistics DataFrame
+        ci_df: Confidence intervals DataFrame
         output_folder: Where to save plots
     """
     print("\n" + "="*80)
@@ -609,8 +617,24 @@ def plot_model_comparison_per_fold(summary_df, output_folder):
                      if len(fold_data[fold_data['model'] == m]) > 0 else 0
                      for m in models]
 
+        # Extract confidence intervals for error bars
+        snr_errors_lower = []
+        snr_errors_upper = []
+        for m in models:
+            ci_data = ci_df[(ci_df['model'] == m) & (ci_df['fold_size'] == fold)]
+            if len(ci_data) > 0:
+                snr_val = fold_data[fold_data['model'] == m]['mean_snr_improvement_db'].values[0]
+                snr_errors_lower.append(snr_val - ci_data['snr_ci_lower'].values[0])
+                snr_errors_upper.append(ci_data['snr_ci_upper'].values[0] - snr_val)
+            else:
+                snr_errors_lower.append(0)
+                snr_errors_upper.append(0)
+
+        snr_yerr = np.array([snr_errors_lower, snr_errors_upper])
+
         colors = [color_map.get(m, '#000000') for m in models]
-        bars = ax.bar(x_pos, snr_values, color=colors, alpha=0.8, edgecolor='black', linewidth=1.5)
+        bars = ax.bar(x_pos, snr_values, color=colors, alpha=0.8, edgecolor='black', linewidth=1.5,
+                     yerr=snr_yerr, capsize=3, error_kw={'linewidth': 1.5, 'ecolor': 'black'})
 
         # Add value labels
         for bar, val in zip(bars, snr_values):
@@ -635,9 +659,25 @@ def plot_model_comparison_per_fold(summary_df, output_folder):
                       if len(fold_data[fold_data['model'] == m]) > 0 else 0
                       for m in models]
 
+        # Extract confidence intervals for error bars
+        rmse_pct_errors_lower = []
+        rmse_pct_errors_upper = []
+        for m in models:
+            ci_data = ci_df[(ci_df['model'] == m) & (ci_df['fold_size'] == fold)]
+            if len(ci_data) > 0:
+                rmse_val = fold_data[fold_data['model'] == m]['mean_rmse_improvement_pct'].values[0]
+                rmse_pct_errors_lower.append(rmse_val - ci_data['rmse_pct_ci_lower'].values[0])
+                rmse_pct_errors_upper.append(ci_data['rmse_pct_ci_upper'].values[0] - rmse_val)
+            else:
+                rmse_pct_errors_lower.append(0)
+                rmse_pct_errors_upper.append(0)
+
+        rmse_pct_yerr = np.array([rmse_pct_errors_lower, rmse_pct_errors_upper])
+
         colors = [color_map.get(m, '#000000') for m in models]
         bars = ax.bar(x_pos, rmse_values, color=colors, alpha=0.8,
-                     edgecolor='black', linewidth=1.5, hatch='//')
+                     edgecolor='black', linewidth=1.5, hatch='//',
+                     yerr=rmse_pct_yerr, capsize=3, error_kw={'linewidth': 1.5, 'ecolor': 'black'})
 
         # Add value labels
         for bar, val in zip(bars, rmse_values):
@@ -1024,7 +1064,7 @@ Example:
 
         # Generate visualizations
         plot_performance_vs_training_size(summary_df, ci_df, metadata, output_folder)
-        plot_model_comparison_per_fold(summary_df, output_folder)
+        plot_model_comparison_per_fold(summary_df, ci_df, output_folder)
         plot_training_efficiency(summary_df, metadata, output_folder)
 
         # Create summary outputs
