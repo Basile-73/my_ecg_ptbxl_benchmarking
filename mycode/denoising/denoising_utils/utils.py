@@ -313,6 +313,14 @@ def get_model(model_type: str, input_length: int = 5000,
         IMUnet = module.IMUnet
         base_model = IMUnet(in_channels=1)
         model = DenoisingModelWrapper(base_model, input_length)
+    elif model_type == 'imunet_mamba_bn_big':
+        stage_path = os.path.join(ecg_processing_path, "Stage1_2_IMUnet_mamba_merge_bn_big.py")
+        spec = importlib.util.spec_from_file_location("stage_imunet_mamba_bn", stage_path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        IMUnet = module.IMUnet
+        base_model = IMUnet(in_channels=1)
+        model = DenoisingModelWrapper(base_model, input_length)
     elif model_type == 'imunet_mamba_up':
         stage_path = os.path.join(ecg_processing_path, "Stage1_3_IMUnet_mamba_merge_up.py")
         spec = importlib.util.spec_from_file_location("stage_imunet_mamba_up", stage_path)
@@ -323,6 +331,14 @@ def get_model(model_type: str, input_length: int = 5000,
         model = DenoisingModelWrapper(base_model, input_length)
     elif model_type == 'imunet_mamba_early':
         stage_path = os.path.join(ecg_processing_path, "Stage1_4_IMUnet_mamba_merge_early.py")
+        spec = importlib.util.spec_from_file_location("stage_imunet_mamba_early", stage_path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        IMUnet = module.IMUnet
+        base_model = IMUnet(in_channels=1)
+        model = DenoisingModelWrapper(base_model, input_length)
+    elif model_type == 'imunet_mamba_early_big':
+        stage_path = os.path.join(ecg_processing_path, "Stage1_4_IMUnet_mamba_merge_early_big.py")
         spec = importlib.util.spec_from_file_location("stage_imunet_mamba_early", stage_path)
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
