@@ -1,0 +1,18 @@
+n_samples:
+  train: 15
+  test: 5
+  eval: 5
+
+baseline_parameters:
+  duration: 30
+  sampling_rate: 100
+  heart_rate: 70
+
+signal_regularity_parameters: # variation within a single record
+  heart_rate_std: 5 # variability between beats
+  lfhfratio: 3
+
+signal_diversity_parameters: # variation between different records
+  std_ai: 0 # variation in the amplitude of PQRS and T waves
+  std_bi: 0 # variation in the shape of PQRS and T waves
+  std_hr: 3 # variation in heart rate
