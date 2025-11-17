@@ -101,7 +101,7 @@ def bandpass_filter(data: np.ndarray, lowcut: float = 1.0, highcut: float = 45.0
 
 
 def normalize_signals(data: np.ndarray, method: str = 'standard',
-                     stats: dict = None, axis: str = 'channel_record') -> Tuple[np.ndarray, dict]:
+                     stats: dict = None, axis: str = 'channel') -> Tuple[np.ndarray, dict]:
     """
     Normalize ECG signals.
 
