@@ -293,6 +293,48 @@ def get_model(model_type: str, input_length: int = 5000,
         from Stage1_IMUnet import IMUnet
         base_model = IMUnet(in_channels=1)
         model = DenoisingModelWrapper(base_model, input_length)
+    elif model_type == 'imunet_varlen':
+        # Variable-length IMUnet with native variable-length support (no wrapper needed)
+        # This model dynamically calculates upsample sizes based on input_length,
+        # eliminating the need for interpolation and improving efficiency.
+        from Stage1_IMUnet_varlen import IMUnet
+        model = IMUnet(in_channels=1, input_length=input_length)
+        # No DenoisingModelWrapper needed - model handles variable lengths natively
+        print(f"  Model: imunet_varlen with native variable-length support (input_length={input_length})")
+        n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+        print(f"  Parameters: {n_params:,}")
+    elif model_type == 'imunet_mamba_varlen':
+        # Stage1_2 IMUnet with Mamba-enhanced bottleneck and native variable-length support
+        # Uses MambaMerge for context fusion instead of simple 1x1 convolution
+        # No interpolation wrapper needed - model handles variable lengths natively
+        try:
+            from Stage1_2_IMUnet_mamba_merge_bn_big_varlen import IMUnet
+            model = IMUnet(in_channels=1, input_length=input_length)
+            # No DenoisingModelWrapper needed - model handles variable lengths natively
+            n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+            print(f"  Loaded IMUnet_Mamba_varlen with {n_params:,} parameters for input_length={input_length}")
+        except ImportError as e:
+            raise ImportError(
+                "Stage1_2_IMUnet_mamba_merge_bn_big_varlen requires mamba-ssm. "
+                "Install with: pip install mamba-ssm"
+            ) from e
+    elif model_type == 'imunet_early_mamba_varlen':
+        # Stage1_4 IMUnet with early-stage Mamba and native variable-length support
+        # Uses MambaEarlyLayer in first encoder block to capture global temporal dependencies
+        # in raw signals before downsampling. Processes full-length sequences (e.g., 3600 samples)
+        # at the earliest stage, unlike Stage1_2 which uses Mamba in the compressed bottleneck.
+        # No interpolation wrapper needed - model handles variable lengths natively.
+        try:
+            from Stage1_4_IMUnet_mamba_merge_early_big_varlen import IMUnet
+            model = IMUnet(in_channels=1, input_length=input_length)
+            # No DenoisingModelWrapper needed - model handles variable lengths natively
+            n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+            print(f"  Loaded IMUnet_EarlyMamba_varlen with {n_params:,} parameters for input_length={input_length}")
+        except ImportError as e:
+            raise ImportError(
+                "Stage1_4_IMUnet_mamba_merge_early_big_varlen requires mamba-ssm and einops. "
+                "Install with: pip install mamba-ssm einops"
+            ) from e
     elif model_type == 'unet':
         from Stage1_Unet import UNet
         base_model = UNet(in_channels=1)
@@ -410,6 +452,90 @@ def get_model(model_type: str, input_length: int = 5000,
         print(f"Loaded {model_type} with {n_params:,} parameters")
 
         return model
+
+    # MECGE_varlen models: Identical to MECGE but explicitly marked as variable-length capable
+    # for documentation purposes. MECGE is natively variable-length through its STFT-based
+    # architecture (torch.stft/istft with config-driven parameters). No code modifications
+    # were needed - this is a copy of MECGE.py to document native variable-length support.
+
+    elif model_type == 'mecge_phase_varlen':
+        # Load MECGE_varlen with phase feature configuration
+        # Natively variable-length via STFT (no modifications needed)
+        config_path = os.path.join(os.path.dirname(__file__), '../denoising_models/my_MECG-E/config/MECGE_phase.yaml')
+        with open(config_path, 'r') as f:
+            config = yaml.safe_load(f)
+
+        try:
+            from models.MECGE_varlen import MECGE
+            model = MECGE(config)
+
+            if pretrained_path and os.path.exists(pretrained_path):
+                model.load_state_dict(torch.load(pretrained_path))
+
+            n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+            print(f"  Loaded mecge_phase_varlen with native variable-length support (STFT-based, no modifications needed)")
+            print(f"  Parameters: {n_params:,}")
+            print(f"  STFT config: n_fft={config['model']['n_fft']}, hop_size={config['model']['hop_size']}, win_size={config['model']['win_size']}")
+
+            return model
+        except ImportError as e:
+            raise ImportError(
+                "MECGE_varlen requires mamba-ssm and einops. "
+                "Install with: pip install mamba-ssm einops"
+            ) from e
+
+    elif model_type == 'mecge_complex_varlen':
+        # Load MECGE_varlen with complex feature configuration
+        # Natively variable-length via STFT (no modifications needed)
+        config_path = os.path.join(os.path.dirname(__file__), '../denoising_models/my_MECG-E/config/MECGE_complex.yaml')
+        with open(config_path, 'r') as f:
+            config = yaml.safe_load(f)
+
+        try:
+            from models.MECGE_varlen import MECGE
+            model = MECGE(config)
+
+            if pretrained_path and os.path.exists(pretrained_path):
+                model.load_state_dict(torch.load(pretrained_path))
+
+            n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+            print(f"  Loaded mecge_complex_varlen with native variable-length support (STFT-based, no modifications needed)")
+            print(f"  Parameters: {n_params:,}")
+            print(f"  STFT config: n_fft={config['model']['n_fft']}, hop_size={config['model']['hop_size']}, win_size={config['model']['win_size']}")
+
+            return model
+        except ImportError as e:
+            raise ImportError(
+                "MECGE_varlen requires mamba-ssm and einops. "
+                "Install with: pip install mamba-ssm einops"
+            ) from e
+
+    elif model_type == 'mecge_wav_varlen':
+        # Load MECGE_varlen with waveform feature configuration
+        # Natively variable-length via STFT (no modifications needed)
+        config_path = os.path.join(os.path.dirname(__file__), '../denoising_models/my_MECG-E/config/MECGE_wav.yaml')
+        with open(config_path, 'r') as f:
+            config = yaml.safe_load(f)
+
+        try:
+            from models.MECGE_varlen import MECGE
+            model = MECGE(config)
+
+            if pretrained_path and os.path.exists(pretrained_path):
+                model.load_state_dict(torch.load(pretrained_path))
+
+            n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+            print(f"  Loaded mecge_wav_varlen with native variable-length support (STFT-based, no modifications needed)")
+            print(f"  Parameters: {n_params:,}")
+            print(f"  STFT config: n_fft={config['model']['n_fft']}, hop_size={config['model']['hop_size']}, win_size={config['model']['win_size']}")
+
+            return model
+        except ImportError as e:
+            raise ImportError(
+                "MECGE_varlen requires mamba-ssm and einops. "
+                "Install with: pip install mamba-ssm einops"
+            ) from e
+
     else:
         raise ValueError(f"Unknown model name: {model_type}")
 
