@@ -159,6 +159,92 @@ def evaluate_model_by_class(model_name, predictions, clean_test,
     return results_dict
 
 
+def evaluate_noisy_input_by_class(clean_test, noisy_test, test_labels_dict, bootstrap_samples):
+    """
+    Evaluate noisy input as a baseline by computing per-class metrics against clean ground truth.
+
+    Args:
+        clean_test: Clean test data
+        noisy_test: Noisy test data
+        test_labels_dict: Dictionary mapping class types to label DataFrames
+        bootstrap_samples: Bootstrap sample indices for confidence intervals
+
+    Returns:
+        Dictionary mapping class_type -> DataFrame with noisy input metrics
+    """
+    print("\nComputing noisy input baseline metrics by class...")
+    n_samples = len(clean_test)
+
+    # Compute per-sample metrics
+    snr_per_sample = np.zeros(n_samples)
+    rmse_per_sample = np.zeros(n_samples)
+
+    print("  Computing per-sample metrics...")
+    for i in tqdm(range(n_samples), desc="  Samples"):
+        clean_signal = clean_test[i].squeeze()
+        noisy_signal = noisy_test[i].squeeze()
+
+        snr_per_sample[i] = calculate_snr(clean_signal, noisy_signal)
+        rmse_per_sample[i] = calculate_rmse(clean_signal, noisy_signal)
+
+    # Evaluate for each class type
+    results_dict = {}
+
+    for class_type in ['diagnostic', 'subdiagnostic', 'superdiagnostic']:
+        print(f"  Processing {class_type} classes...")
+
+        test_labels = test_labels_dict[class_type]
+
+        # Get all unique classes from the multi-label column
+        all_classes = set()
+        for sample_labels in test_labels[class_type]:
+            if isinstance(sample_labels, list):
+                all_classes.update(sample_labels)
+
+        all_classes = sorted(list(all_classes))
+
+        # Compute metrics for each class
+        class_results = []
+
+        for class_name in tqdm(all_classes, desc=f"  {class_type} classes"):
+            # Create boolean mask for samples belonging to this class
+            class_mask = np.array([
+                class_name in sample_labels if isinstance(sample_labels, list) else False
+                for sample_labels in test_labels[class_type]
+            ])
+
+            n_class_samples = class_mask.sum()
+
+            # Skip classes with very few samples
+            if n_class_samples < 5:
+                print(f"    Warning: {class_name} has only {n_class_samples} samples (skipping)")
+                continue
+
+            # Compute bootstrap statistics
+            snr_mean, snr_lower, snr_upper = compute_bootstrap_stats(
+                snr_per_sample, bootstrap_samples, class_mask
+            )
+            rmse_mean, rmse_lower, rmse_upper = compute_bootstrap_stats(
+                rmse_per_sample, bootstrap_samples, class_mask
+            )
+
+            class_results.append({
+                'model': 'noisy_input',
+                'class': class_name,
+                'n_samples': n_class_samples,
+                'snr_mean': snr_mean,
+                'snr_lower_ci': snr_lower,
+                'snr_upper_ci': snr_upper,
+                'rmse_mean': rmse_mean,
+                'rmse_lower_ci': rmse_lower,
+                'rmse_upper_ci': rmse_upper
+            })
+
+        results_dict[class_type] = pd.DataFrame(class_results)
+
+    return results_dict
+
+
 def main():
     """Main entry point."""
     parser = argparse.ArgumentParser(
@@ -213,6 +299,27 @@ def main():
     clean_test = np.load(clean_test_path)
     print(f"  ✓ Loaded {len(clean_test)} test samples")
     print(f"  Shape: {clean_test.shape}")
+
+    # Load noisy test data
+    print("\nLoading noisy test data...")
+    noisy_test_path = os.path.join(exp_folder, 'data', 'noisy_test_eval.npy')
+    if not os.path.exists(noisy_test_path):
+        print(f"\n❌ ERROR: Noisy test data not found at {noisy_test_path}")
+        print("  Please run the evaluation script to generate noisy test data first.")
+        sys.exit(1)
+    noisy_test = np.load(noisy_test_path)
+    print(f"  ✓ Loaded {len(noisy_test)} noisy test samples")
+    print(f"  Shape: {noisy_test.shape}")
+
+    # Verify noisy_test and clean_test alignment
+    if len(noisy_test) != len(clean_test):
+        print(f"\n❌ ERROR: Noisy test count ({len(noisy_test)}) != clean test count ({len(clean_test)})")
+        print("  The noisy and clean test data must have the same number of samples.")
+        sys.exit(1)
+    if noisy_test.shape != clean_test.shape:
+        print(f"\n❌ ERROR: Noisy test shape {noisy_test.shape} != clean test shape {clean_test.shape}")
+        print("  The noisy and clean test data must have the same shape.")
+        sys.exit(1)
 
     # Load raw PTB-XL labels (labels-only, no signal loading)
     print("\nLoading PTB-XL labels...")
@@ -281,6 +388,16 @@ def main():
         'subdiagnostic': [],
         'superdiagnostic': []
     }
+
+    # Evaluate noisy input baseline
+    print("\nEvaluating noisy input baseline...")
+    noisy_input_results = evaluate_noisy_input_by_class(
+        clean_test, noisy_test, test_labels_dict, bootstrap_samples
+    )
+
+    # Add noisy input results first
+    for class_type in ['diagnostic', 'subdiagnostic', 'superdiagnostic']:
+        all_results[class_type].append(noisy_input_results[class_type])
 
     for model_config in config['models']:
         model_name = model_config['name']
