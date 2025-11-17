@@ -98,6 +98,45 @@ def evaluate_model(model_name, exp_folder, clean_test, noisy_test):
     return pd.DataFrame(results)
 
 
+def evaluate_noisy_input(clean_test, noisy_test):
+    """
+    Evaluate noisy input as a baseline by computing metrics against clean ground truth.
+
+    Args:
+        clean_test: Clean test data
+        noisy_test: Noisy test data
+
+    Returns:
+        DataFrame with noisy input metrics (same structure as evaluate_model)
+    """
+    print("Computing noisy input baseline metrics...")
+    results = []
+
+    for i in range(len(clean_test)):
+        clean = clean_test[i].squeeze()
+        noisy = noisy_test[i].squeeze()
+
+        # Calculate SNR (for noisy input, input and output SNR are the same)
+        input_snr = calculate_snr(clean, noisy)
+
+        # Calculate RMSE (for noisy input, noisy and denoised RMSE are the same)
+        rmse_noisy = calculate_rmse(clean, noisy)
+
+        results.append({
+            'model': 'noisy_input',
+            'sample_idx': i,
+            'input_snr_db': input_snr,
+            'output_snr_db': input_snr,  # No improvement for noisy input
+            'snr_improvement_db': 0.0,  # No improvement
+            'rmse_noisy': rmse_noisy,
+            'rmse_denoised': rmse_noisy,  # No improvement
+            'rmse_improvement': 0.0,  # No improvement
+            'rmse_improvement_pct': 0.0  # No improvement
+        })
+
+    return pd.DataFrame(results)
+
+
 def compute_summary(results_df):
     """Compute summary statistics."""
     summary = []
@@ -396,6 +435,11 @@ def main():
         results = evaluate_model(model_name, exp_folder, clean_test, noisy_test)
         if results is not None:
             all_results.append(results)
+
+    # Evaluate noisy input baseline
+    print("\nEvaluating noisy input baseline...")
+    noisy_input_results = evaluate_noisy_input(clean_test, noisy_test)
+    all_results.append(noisy_input_results)
 
     if not all_results:
         print("No results found!")

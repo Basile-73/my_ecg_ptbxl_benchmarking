@@ -5,9 +5,10 @@ data = {
     "Model": [
         "fcn (Qui)", "imunet (Qui)", "imunet_mamba_bn",
         "imunet_mamba_early", "imunet_mamba_late",
-        "imunet_mamba_up", "mecge_phase (Hung)", "unet (Qui)"
+        "imunet_mamba_up", "mecge_phase (Hung)", "unet (Qui)",
+        "imunet_mamba_early_256_4", "imunet_mamba_bn_256_4"
     ],
-    "Parameters": [193457, 277124, 328253, 278554, 285117, 309885, 819561, 226737]
+    "Parameters": [193457, 277124, 328253, 278554, 285117, 309885, 819561, 226737, 323386, 526781]
 }
 
 color_map = {
