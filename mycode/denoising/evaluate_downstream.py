@@ -72,7 +72,7 @@ def resample_signal(signal_data, original_rate, target_rate):
 
         resampled.append(np.stack(channels, axis=1))
 
-    return np.array(resampled)
+    return np.array(resampled, dtype=np.float32)
 
 
 def load_classification_model(model_name, base_exp_folder, n_classes, input_shape, sampling_rate):
@@ -399,7 +399,7 @@ def evaluate_downstream(config_path='code/denoising/configs/denoising_config.yam
             is_stage2=is_stage2
         )
 
-        model.load_state_dict(torch.load(model_path, map_location=device))
+        model.load_state_dict(torch.load(model_path, map_location=device, weights_only=True))
         model.to(device)
         model.eval()
 
@@ -436,7 +436,7 @@ def evaluate_downstream(config_path='code/denoising/configs/denoising_config.yam
                             input_length=X_val_12lead.shape[1],
                             is_stage2=False
                         )
-                        stage1_model.load_state_dict(torch.load(stage1_model_path, map_location=device))
+                        stage1_model.load_state_dict(torch.load(stage1_model_path, map_location=device, weights_only=True))
                         stage1_model.to(device)
                         stage1_model.eval()
 

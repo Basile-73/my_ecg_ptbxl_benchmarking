@@ -416,7 +416,7 @@ def get_model(model_type: str, input_length: int = 5000,
         model = MECGE(config)
 
         if pretrained_path and os.path.exists(pretrained_path):
-            model.load_state_dict(torch.load(pretrained_path))
+            model.load_state_dict(torch.load(pretrained_path, weights_only=True))
 
         n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
         print(f"Loaded {model_type} with {n_params:,} parameters")
@@ -431,7 +431,7 @@ def get_model(model_type: str, input_length: int = 5000,
         model = MECGE(config)
 
         if pretrained_path and os.path.exists(pretrained_path):
-            model.load_state_dict(torch.load(pretrained_path))
+            model.load_state_dict(torch.load(pretrained_path, weights_only=True))
 
         n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
         print(f"Loaded {model_type} with {n_params:,} parameters")
@@ -446,7 +446,7 @@ def get_model(model_type: str, input_length: int = 5000,
         model = MECGE(config)
 
         if pretrained_path and os.path.exists(pretrained_path):
-            model.load_state_dict(torch.load(pretrained_path))
+            model.load_state_dict(torch.load(pretrained_path, weights_only=True))
 
         n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
         print(f"Loaded {model_type} with {n_params:,} parameters")
@@ -470,7 +470,7 @@ def get_model(model_type: str, input_length: int = 5000,
             model = MECGE(config)
 
             if pretrained_path and os.path.exists(pretrained_path):
-                model.load_state_dict(torch.load(pretrained_path))
+                model.load_state_dict(torch.load(pretrained_path, weights_only=True))
 
             n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
             print(f"  Loaded mecge_phase_varlen with native variable-length support (STFT-based, no modifications needed)")
@@ -496,7 +496,7 @@ def get_model(model_type: str, input_length: int = 5000,
             model = MECGE(config)
 
             if pretrained_path and os.path.exists(pretrained_path):
-                model.load_state_dict(torch.load(pretrained_path))
+                model.load_state_dict(torch.load(pretrained_path, weights_only=True))
 
             n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
             print(f"  Loaded mecge_complex_varlen with native variable-length support (STFT-based, no modifications needed)")
@@ -522,7 +522,7 @@ def get_model(model_type: str, input_length: int = 5000,
             model = MECGE(config)
 
             if pretrained_path and os.path.exists(pretrained_path):
-                model.load_state_dict(torch.load(pretrained_path))
+                model.load_state_dict(torch.load(pretrained_path, weights_only=True))
 
             n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
             print(f"  Loaded mecge_wav_varlen with native variable-length support (STFT-based, no modifications needed)")
@@ -540,7 +540,7 @@ def get_model(model_type: str, input_length: int = 5000,
         raise ValueError(f"Unknown model name: {model_type}")
 
     if pretrained_path and os.path.exists(pretrained_path):
-        model.load_state_dict(torch.load(pretrained_path))
+        model.load_state_dict(torch.load(pretrained_path, weights_only=True))
 
     n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print(f"Loaded {model_type} with {n_params:,} parameters")
