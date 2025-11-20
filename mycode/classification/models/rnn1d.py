@@ -3,8 +3,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 import math
 
-from fastai.layers import *
-from fastai.core import *
+from fastai.vision.all import Lambda, listify
+from models.basic_conv1d import bn_drop_lin
 
 class AdaptiveConcatPoolRNN(nn.Module):
     def __init__(self, bidirectional):

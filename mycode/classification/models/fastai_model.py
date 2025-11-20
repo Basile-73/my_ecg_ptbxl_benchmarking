@@ -1,12 +1,10 @@
 from models.timeseries_utils import *
 
-from fastai import *
-from fastai.basic_data import *
-from fastai.basic_train import *
-from fastai.train import *
-from fastai.metrics import *
-from fastai.torch_core import *
-from fastai.callbacks.tracker import SaveModelCallback
+from fastai.vision.all import *
+from fastai.callback.tracker import SaveModelCallback
+
+# Re-import ToTensor after fastai imports to avoid name conflict
+from models.timeseries_utils import ToTensor, TimeseriesDatasetCrops
 
 from pathlib import Path
 from functools import partial
@@ -26,8 +24,13 @@ import matplotlib
 import matplotlib.pyplot as plt
 
 #eval for early stopping
-from fastai.callback import Callback
+from fastai.callback.core import Callback
 from utils.utils import evaluate_experiment
+
+# Helper function for one-hot encoding (was removed in fastai 2.x)
+def one_hot_np(labels, n_classes):
+    """Convert integer labels to one-hot encoded numpy array."""
+    return np.eye(n_classes)[labels.astype(int)]
 
 class metric_func(Callback):
     "Obtains score using user-supplied function func (potentially ignoring targets with ignore_idx)"
@@ -41,14 +44,19 @@ class metric_func(Callback):
         self.flatten_target = flatten_target
         self.sigmoid_pred = sigmoid_pred
         self.metric_component = metric_component
-        self.name=name
-
-    def on_epoch_begin(self, **kwargs):
+        self.metric_name = name
         self.y_pred = None
         self.y_true = None
 
-    def on_batch_end(self, last_output, last_target, **kwargs):
+    def before_epoch(self):
+        self.y_pred = None
+        self.y_true = None
+
+    def after_batch(self):
         #flatten everything (to make it also work for annotation tasks)
+        last_output = self.learn.pred
+        last_target = self.learn.y
+
         y_pred_flat = last_output.view((-1,last_output.size()[-1]))
 
         if self.flatten_target:
@@ -83,13 +91,26 @@ class metric_func(Callback):
             self.y_pred = np.concatenate([self.y_pred, y_pred_flat], axis=0)
             self.y_true = np.concatenate([self.y_true, y_true_flat], axis=0)
 
-    def on_epoch_end(self, last_metrics, **kwargs):
+    def after_epoch(self):
         #access full metric (possibly multiple components) via self.metric_complete
         self.metric_complete = self.func(self.y_true, self.y_pred)
         if(self.metric_component is not None):
-            return add_metrics(last_metrics, self.metric_complete[self.metric_component])
+            self.learn.recorder.add_metric_value(self.metric_name, self.metric_complete[self.metric_component])
         else:
-            return add_metrics(last_metrics, self.metric_complete)
+            self.learn.recorder.add_metric_value(self.metric_name, self.metric_complete)
+
+    @property
+    def name(self):
+        return self.metric_name
+
+    @property
+    def value(self):
+        if hasattr(self, 'metric_complete'):
+            if self.metric_component is not None:
+                return self.metric_complete[self.metric_component]
+            else:
+                return self.metric_complete
+        return None
 
 def fmax_metric(targs,preds):
     return evaluate_experiment(targs,preds)["Fmax"]
@@ -294,7 +315,19 @@ class fastai_model(ClassificationModel):
         y_dummy = [np.ones(self.num_classes,dtype=np.float32) for _ in range(len(X))]
 
         learn = self._get_learner(X,y_dummy,X,y_dummy)
-        learn.load(self.name)
+
+        # Temporarily patch torch.load to disable weights_only for compatibility
+        import torch
+        original_torch_load = torch.load
+        def patched_torch_load(f, *args, **kwargs):
+            kwargs['weights_only'] = False
+            return original_torch_load(f, *args, **kwargs)
+        torch.load = patched_torch_load
+
+        try:
+            learn.load(self.name)
+        finally:
+            torch.load = original_torch_load
 
         preds,targs=learn.get_preds()
         preds=to_np(preds)
@@ -307,12 +340,54 @@ class fastai_model(ClassificationModel):
         df_train = pd.DataFrame({"data":range(len(X_train)),"label":y_train})
         df_valid = pd.DataFrame({"data":range(len(X_val)),"label":y_val})
 
-        tfms_ptb_xl = [ToTensor()]
+        tfms_ptb_xl = [ToTensor(transpose_data1d=True)]
 
+        # Use the existing ToTensor transform which returns tuples
         ds_train=TimeseriesDatasetCrops(df_train,self.input_size,num_classes=self.num_classes,chunk_length=self.chunk_length_train if self.chunkify_train else 0,min_chunk_length=self.min_chunk_length,stride=self.stride_length_train,transforms=tfms_ptb_xl,annotation=False,col_lbl ="label",npy_data=X_train)
         ds_valid=TimeseriesDatasetCrops(df_valid,self.input_size,num_classes=self.num_classes,chunk_length=self.chunk_length_valid if self.chunkify_valid else 0,min_chunk_length=self.min_chunk_length,stride=self.stride_length_valid,transforms=tfms_ptb_xl,annotation=False,col_lbl ="label",npy_data=X_val)
 
-        db = DataBunch.create(ds_train,ds_valid,bs=self.bs)
+        # Create DataLoaders using PyTorch's DataLoader directly, then wrap in fastai DataLoaders
+        # Need custom collate function to convert numpy arrays to tensors
+        from torch.utils.data import DataLoader as TorchDataLoader
+
+        def collate_tuples(batch):
+            """Custom collate function that handles tuple outputs from dataset and converts to tensors."""
+            data_list = []
+            label_list = []
+
+            for item in batch:
+                # Handle both tuple and dict formats (dict shouldn't happen but kept as fallback)
+                if isinstance(item, tuple):
+                    data, label = item
+                elif isinstance(item, dict):
+                    data = item['data']
+                    label = item['label']
+                else:
+                    raise TypeError(f"Expected tuple or dict, got {type(item)}")
+
+                # Convert to tensors if needed
+                if not isinstance(data, torch.Tensor):
+                    data = torch.from_numpy(data) if hasattr(data, '__array__') else torch.tensor(data)
+                if not isinstance(label, torch.Tensor):
+                    label = torch.from_numpy(label) if hasattr(label, '__array__') else torch.tensor(label)
+
+                data_list.append(data)
+                label_list.append(label)
+
+            # Stack into batched tensors
+            data_batch = torch.stack(data_list)
+            label_batch = torch.stack(label_list)
+
+            # Return as list (not tuple!) for fastai compatibility
+            return [data_batch, label_batch]
+
+        train_dl = TorchDataLoader(ds_train, batch_size=self.bs, shuffle=True, num_workers=0, collate_fn=collate_tuples)
+        valid_dl = TorchDataLoader(ds_valid, batch_size=self.bs, shuffle=False, num_workers=0, collate_fn=collate_tuples)
+
+        # Wrap PyTorch DataLoaders in fastai DataLoaders
+        db = DataLoaders(train_dl, valid_dl, path=self.outputfolder)
+        # Tell fastai that the first element is input and second is target
+        db.n_inp = 1
 
         if(self.loss == "binary_cross_entropy"):
             loss = F.binary_cross_entropy_with_logits
