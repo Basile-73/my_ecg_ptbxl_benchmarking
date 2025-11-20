@@ -2,9 +2,18 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import math
+from typing import Optional, Collection, Union
 
-from fastai.layers import *
-from fastai.core import *
+# Import fastai utilities
+from fastai.vision.all import Flatten, LinBnDrop, listify
+
+# Type alias for fastai compatibility
+Floats = Union[float, list]
+
+# Helper function for backward compatibility with old fastai API
+def bn_drop_lin(n_in, n_out, bn=True, p=0., actn=None):
+    """Sequence of batchnorm (if `bn`), dropout (if `p`) and linear (`n_in`,`n_out`) layers followed by `actn`."""
+    return [LinBnDrop(n_in, n_out, bn=bn, p=p, act=actn)]
 
 ##############################################################################################################################################
 # utility functions

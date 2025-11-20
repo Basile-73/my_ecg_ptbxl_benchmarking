@@ -122,14 +122,14 @@ Examples:
     parser.add_argument(
         '--data-folder',
         type=str,
-        default='data/ptbxl/',
+        default='data/physionet.org/files/ptb-xl/1.0.3',
         help='Path to PTB-XL data folder'
     )
 
     parser.add_argument(
         '--output-folder',
         type=str,
-        default='code/classification/output/short/',
+        default='mycode/classification/output/test/',
         help='Path to output folder'
     )
 

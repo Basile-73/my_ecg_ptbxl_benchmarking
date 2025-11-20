@@ -11,6 +11,7 @@ import matplotlib.pyplot as plt
 from tqdm import tqdm
 import wfdb
 import ast
+from scipy import signal as scipy_signal
 from sklearn.metrics import fbeta_score, roc_auc_score, roc_curve, roc_curve, auc
 from sklearn.preprocessing import StandardScaler, MultiLabelBinarizer
 from matplotlib.axes._axes import _log as matplotlib_axes_logger
@@ -194,6 +195,42 @@ def load_raw_data_ptbxl(df, sampling_rate, path):
             data = [wfdb.rdsamp(path+f) for f in tqdm(df.filename_hr)]
             data = np.array([signal for signal, meta in data])
             pickle.dump(data, open(path+'raw500.npy', 'wb'), protocol=4)
+    else:
+        # Handle arbitrary sampling rates by resampling from 500Hz data
+        resampled_file = path + f'raw{sampling_rate}.npy'
+
+        if os.path.exists(resampled_file):
+            # Load pre-resampled data if it exists
+            data = np.load(resampled_file, allow_pickle=True)
+        else:
+            # Load 500Hz data first
+            print(f"Loading 500Hz data to resample to {sampling_rate}Hz...")
+            if os.path.exists(path + 'raw500.npy'):
+                data_500 = np.load(path+'raw500.npy', allow_pickle=True)
+            else:
+                data_500 = [wfdb.rdsamp(path+f) for f in tqdm(df.filename_hr)]
+                data_500 = np.array([signal for signal, meta in data_500])
+                pickle.dump(data_500, open(path+'raw500.npy', 'wb'), protocol=4)
+
+            # Resample from 500Hz to target sampling rate
+            print(f"Resampling from 500Hz to {sampling_rate}Hz...")
+            resampled_data = []
+            for signal_data in tqdm(data_500):
+                # Calculate number of samples for target rate
+                num_samples = int(signal_data.shape[0] * sampling_rate / 500)
+                # Resample each channel independently
+                channels = []
+                for ch in range(signal_data.shape[1]):
+                    resampled_sig = scipy_signal.resample(signal_data[:, ch], num_samples)
+                    channels.append(resampled_sig)
+                resampled_data.append(np.stack(channels, axis=1))
+
+            data = np.array(resampled_data)
+
+            # Save resampled data for future use
+            print(f"Saving resampled data to {resampled_file}...")
+            pickle.dump(data, open(resampled_file, 'wb'), protocol=4)
+
     return data
 
 def compute_label_aggregations(df, folder, ctype):
@@ -449,8 +486,8 @@ def ICBEBE_table(selection=None, folder='../output/'):
         me_res = pd.read_csv(folder+'exp_ICBEB/models/'+model+'/results/te_results.csv', index_col=0)
         mcol=[]
         for col in cols:
-            mean = me_res.ix['point'][col]
-            unc = max(me_res.ix['upper'][col]-me_res.ix['point'][col], me_res.ix['point'][col]-me_res.ix['lower'][col])
+            mean = me_res.loc['point'][col]
+            unc = max(me_res.loc['upper'][col]-me_res.loc['point'][col], me_res.loc['point'][col]-me_res.loc['lower'][col])
             mcol.append("%.3f(%.2d)" %(np.round(mean,3), int(unc*1000)))
         data.append(mcol)
     data = np.array(data)

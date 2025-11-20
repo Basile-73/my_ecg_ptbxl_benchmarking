@@ -390,6 +390,7 @@ def qui_plot(noise_configs, exp_folder, config, clean_test, models, n_bootstrap_
     ax1 = axes[0]
     x_pos = 0
     max_rmse_y = 0
+    min_rmse_y = float('inf')
 
     for config_idx, noise_config in enumerate(noise_configs):
         config_name = noise_config['name']
@@ -421,8 +422,9 @@ def qui_plot(noise_configs, exp_folder, config, clean_test, models, n_bootstrap_
                         bbox=dict(boxstyle='round,pad=0.3', facecolor='white',
                                  edgecolor='none', alpha=0.7))
 
-                # Track maximum y value
+                # Track maximum and minimum y values
                 max_rmse_y = max(max_rmse_y, point_rmse + upper_err)
+                min_rmse_y = min(min_rmse_y, point_rmse - lower_err)
 
         group_center = x_pos + (n_models - 1) * bar_width / 2
         config_positions.append(group_center)
@@ -435,13 +437,14 @@ def qui_plot(noise_configs, exp_folder, config, clean_test, models, n_bootstrap_
     ax1.set_xticks(config_positions)
     ax1.set_xticklabels(config_labels, fontsize=11)
     ax1.grid(True, alpha=0.3, axis='y')
-    ax1.set_ylim(bottom=0, top=max_rmse_y * 1.15)
+    ax1.set_ylim(bottom=min_rmse_y * 0.95, top=max_rmse_y * 1.15)
     ax1.legend(loc='lower right', fontsize=9)
 
     # Plot 2: Output SNR (changed from SNR Improvement)
     ax2 = axes[1]
     x_pos = 0
     max_snr_y = 0
+    min_snr_y = float('inf')
 
     for config_idx, noise_config in enumerate(noise_configs):
         config_name = noise_config['name']
@@ -473,8 +476,9 @@ def qui_plot(noise_configs, exp_folder, config, clean_test, models, n_bootstrap_
                         bbox=dict(boxstyle='round,pad=0.3', facecolor='white',
                                  edgecolor='none', alpha=0.7))
 
-                # Track maximum y value
+                # Track maximum and minimum y values
                 max_snr_y = max(max_snr_y, point_snr + upper_err)
+                min_snr_y = min(min_snr_y, point_snr - lower_err)
 
         x_pos += group_width + 0.3
 
@@ -484,7 +488,7 @@ def qui_plot(noise_configs, exp_folder, config, clean_test, models, n_bootstrap_
     ax2.set_xticks(config_positions)
     ax2.set_xticklabels(config_labels, fontsize=11)
     ax2.grid(True, alpha=0.3, axis='y')
-    ax2.set_ylim(top=max_snr_y * 1.15)
+    ax2.set_ylim(bottom=min_snr_y * 0.95, top=max_snr_y * 1.15)
     ax2.legend(loc='lower right', fontsize=9)
 
     plt.tight_layout()

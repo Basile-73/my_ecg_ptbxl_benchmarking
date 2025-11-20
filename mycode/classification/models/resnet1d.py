@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import math
 
-from fastai.layers import Flatten
+from torch.nn import Flatten
 from models.basic_conv1d import create_head1d
 ###############################################################################################
 # Standard resnet

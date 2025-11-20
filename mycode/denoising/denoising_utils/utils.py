@@ -318,6 +318,12 @@ def get_model(model_type: str, input_length: int = 5000,
                 "Stage1_2_IMUnet_mamba_merge_bn_big_varlen requires mamba-ssm. "
                 "Install with: pip install mamba-ssm"
             ) from e
+    elif model_type == 'imunet_mamba_varlen_upconv':
+        from Stage1_2_IMUnet_mamba_merge_bn_big_varlen_upconv import IMUnet
+        model = IMUnet(in_channels=1, input_length=input_length)
+        # No DenoisingModelWrapper needed - model handles variable lengths natively
+        n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+        print(f"  Loaded IMUnet_Mamba_varlen_upconv with {n_params:,} parameters for input_length={input_length}")
     elif model_type == 'imunet_early_mamba_varlen':
         # Stage1_4 IMUnet with early-stage Mamba and native variable-length support
         # Uses MambaEarlyLayer in first encoder block to capture global temporal dependencies
@@ -335,6 +341,11 @@ def get_model(model_type: str, input_length: int = 5000,
                 "Stage1_4_IMUnet_mamba_merge_early_big_varlen requires mamba-ssm and einops. "
                 "Install with: pip install mamba-ssm einops"
             ) from e
+    elif model_type == 'imunet_early_mamba_varlen_upconv':
+        from Stage1_4_IMUnet_mamba_merge_early_big_varlen_upconv import IMUnet
+        model = IMUnet(in_channels=1, input_length=input_length)
+        n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+        print(f"  Loaded IMUnet_EarlyMamba_varlen_upconv with {n_params:,} parameters for input_length={input_length}")
     elif model_type == 'unet':
         from Stage1_Unet import UNet
         base_model = UNet(in_channels=1)
@@ -416,7 +427,7 @@ def get_model(model_type: str, input_length: int = 5000,
         model = MECGE(config)
 
         if pretrained_path and os.path.exists(pretrained_path):
-            model.load_state_dict(torch.load(pretrained_path))
+            model.load_state_dict(torch.load(pretrained_path, weights_only=True))
 
         n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
         print(f"Loaded {model_type} with {n_params:,} parameters")
@@ -431,7 +442,7 @@ def get_model(model_type: str, input_length: int = 5000,
         model = MECGE(config)
 
         if pretrained_path and os.path.exists(pretrained_path):
-            model.load_state_dict(torch.load(pretrained_path))
+            model.load_state_dict(torch.load(pretrained_path, weights_only=True))
 
         n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
         print(f"Loaded {model_type} with {n_params:,} parameters")
@@ -446,7 +457,7 @@ def get_model(model_type: str, input_length: int = 5000,
         model = MECGE(config)
 
         if pretrained_path and os.path.exists(pretrained_path):
-            model.load_state_dict(torch.load(pretrained_path))
+            model.load_state_dict(torch.load(pretrained_path, weights_only=True))
 
         n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
         print(f"Loaded {model_type} with {n_params:,} parameters")
@@ -470,7 +481,7 @@ def get_model(model_type: str, input_length: int = 5000,
             model = MECGE(config)
 
             if pretrained_path and os.path.exists(pretrained_path):
-                model.load_state_dict(torch.load(pretrained_path))
+                model.load_state_dict(torch.load(pretrained_path, weights_only=True))
 
             n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
             print(f"  Loaded mecge_phase_varlen with native variable-length support (STFT-based, no modifications needed)")
@@ -496,7 +507,7 @@ def get_model(model_type: str, input_length: int = 5000,
             model = MECGE(config)
 
             if pretrained_path and os.path.exists(pretrained_path):
-                model.load_state_dict(torch.load(pretrained_path))
+                model.load_state_dict(torch.load(pretrained_path, weights_only=True))
 
             n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
             print(f"  Loaded mecge_complex_varlen with native variable-length support (STFT-based, no modifications needed)")
@@ -522,7 +533,7 @@ def get_model(model_type: str, input_length: int = 5000,
             model = MECGE(config)
 
             if pretrained_path and os.path.exists(pretrained_path):
-                model.load_state_dict(torch.load(pretrained_path))
+                model.load_state_dict(torch.load(pretrained_path, weights_only=True))
 
             n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
             print(f"  Loaded mecge_wav_varlen with native variable-length support (STFT-based, no modifications needed)")
@@ -540,7 +551,7 @@ def get_model(model_type: str, input_length: int = 5000,
         raise ValueError(f"Unknown model name: {model_type}")
 
     if pretrained_path and os.path.exists(pretrained_path):
-        model.load_state_dict(torch.load(pretrained_path))
+        model.load_state_dict(torch.load(pretrained_path, weights_only=True))
 
     n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print(f"Loaded {model_type} with {n_params:,} parameters")

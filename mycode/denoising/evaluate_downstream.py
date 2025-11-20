@@ -72,7 +72,7 @@ def resample_signal(signal_data, original_rate, target_rate):
 
         resampled.append(np.stack(channels, axis=1))
 
-    return np.array(resampled)
+    return np.array(resampled, dtype=np.float32)
 
 
 def load_classification_model(model_name, base_exp_folder, n_classes, input_shape, sampling_rate):
@@ -89,24 +89,52 @@ def load_classification_model(model_name, base_exp_folder, n_classes, input_shap
     Returns:
         Loaded model object
     """
-    from models.fastai_model import fastai_model
+    # Temporarily prioritize classification path to avoid namespace conflicts with denoising models
+    import sys
+    import importlib
 
-    model_path = os.path.join(base_exp_folder, 'models', model_name)
+    # Save original sys.path
+    original_sys_path = sys.path.copy()
 
-    if not os.path.exists(model_path):
-        raise FileNotFoundError(f"Classification model not found: {model_path}")
+    try:
+        # Move classification path to the front
+        classification_path = os.path.join(os.path.dirname(__file__), '../classification')
+        classification_path = os.path.abspath(classification_path)
 
-    print(f"Loading classification model: {model_name}")
+        # Remove all denoising model paths temporarily
+        sys.path = [p for p in sys.path if 'denoising_models' not in p]
 
-    model = fastai_model(
-        model_name,
-        n_classes,
-        sampling_rate,
-        model_path,
-        input_shape
-    )
+        # Add classification path at the beginning
+        sys.path.insert(0, classification_path)
 
-    return model
+        # Clear any cached imports of 'models' module
+        if 'models' in sys.modules:
+            del sys.modules['models']
+        if 'models.fastai_model' in sys.modules:
+            del sys.modules['models.fastai_model']
+
+        # Now import
+        from models.fastai_model import fastai_model
+
+        model_path = os.path.join(base_exp_folder, 'models', model_name)
+
+        if not os.path.exists(model_path):
+            raise FileNotFoundError(f"Classification model not found: {model_path}")
+
+        print(f"Loading classification model: {model_name}")
+
+        model = fastai_model(
+            model_name,
+            n_classes,
+            sampling_rate,
+            model_path,
+            input_shape
+        )
+
+        return model
+    finally:
+        # Restore original sys.path
+        sys.path = original_sys_path
 
 
 def denoise_12lead_signal(noisy_12lead, denoising_model, device, batch_size=32,
@@ -399,7 +427,7 @@ def evaluate_downstream(config_path='code/denoising/configs/denoising_config.yam
             is_stage2=is_stage2
         )
 
-        model.load_state_dict(torch.load(model_path, map_location=device))
+        model.load_state_dict(torch.load(model_path, map_location=device, weights_only=True))
         model.to(device)
         model.eval()
 
@@ -436,7 +464,7 @@ def evaluate_downstream(config_path='code/denoising/configs/denoising_config.yam
                             input_length=X_val_12lead.shape[1],
                             is_stage2=False
                         )
-                        stage1_model.load_state_dict(torch.load(stage1_model_path, map_location=device))
+                        stage1_model.load_state_dict(torch.load(stage1_model_path, map_location=device, weights_only=True))
                         stage1_model.to(device)
                         stage1_model.eval()
 
