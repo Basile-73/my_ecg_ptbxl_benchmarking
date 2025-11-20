@@ -318,6 +318,12 @@ def get_model(model_type: str, input_length: int = 5000,
                 "Stage1_2_IMUnet_mamba_merge_bn_big_varlen requires mamba-ssm. "
                 "Install with: pip install mamba-ssm"
             ) from e
+    elif model_type == 'imunet_mamba_varlen_upconv':
+        from Stage1_2_IMUnet_mamba_merge_bn_big_varlen_upconv import IMUnet
+        model = IMUnet(in_channels=1, input_length=input_length)
+        # No DenoisingModelWrapper needed - model handles variable lengths natively
+        n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+        print(f"  Loaded IMUnet_Mamba_varlen_upconv with {n_params:,} parameters for input_length={input_length}")
     elif model_type == 'imunet_early_mamba_varlen':
         # Stage1_4 IMUnet with early-stage Mamba and native variable-length support
         # Uses MambaEarlyLayer in first encoder block to capture global temporal dependencies
@@ -335,6 +341,11 @@ def get_model(model_type: str, input_length: int = 5000,
                 "Stage1_4_IMUnet_mamba_merge_early_big_varlen requires mamba-ssm and einops. "
                 "Install with: pip install mamba-ssm einops"
             ) from e
+    elif model_type == 'imunet_early_mamba_varlen_upconv':
+        from Stage1_4_IMUnet_mamba_merge_early_big_varlen_upconv import IMUnet
+        model = IMUnet(in_channels=1, input_length=input_length)
+        n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+        print(f"  Loaded IMUnet_EarlyMamba_varlen_upconv with {n_params:,} parameters for input_length={input_length}")
     elif model_type == 'unet':
         from Stage1_Unet import UNet
         base_model = UNet(in_channels=1)
