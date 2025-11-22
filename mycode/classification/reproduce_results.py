@@ -16,12 +16,12 @@ def main():
 
     models = [
         conf_fastai_xresnet1d101,
-        conf_fastai_resnet1d_wang,
-        conf_fastai_lstm,
-        conf_fastai_lstm_bidir,
-        conf_fastai_fcn_wang,
+        # conf_fastai_resnet1d_wang,
+        # conf_fastai_lstm,
+        # conf_fastai_lstm_bidir,
+        # conf_fastai_fcn_wang,
         conf_fastai_inception1d,
-        conf_wavelet_standard_nn,
+        # conf_wavelet_standard_nn, # model written in keras. Skipped to avoid refactoring in conda env
         ]
 
     ##########################################
@@ -44,7 +44,7 @@ def main():
         e.evaluate()
 
     # generate great summary table
-    utils.generate_ptbxl_summary_table()
+    utils.generate_ptbxl_summary_table(selection=None, folder=outputfolder)
 
     ##########################################
     # EXPERIMENT BASED ICBEB DATA
