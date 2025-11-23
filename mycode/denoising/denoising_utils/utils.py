@@ -318,6 +318,38 @@ def get_model(model_type: str, input_length: int = 5000,
                 "Stage1_2_IMUnet_mamba_merge_bn_big_varlen requires mamba-ssm. "
                 "Install with: pip install mamba-ssm"
             ) from e
+    elif model_type == 'imunet_mamba_up_varlen':
+        # Stage1_3 IMUnet with Mamba-enhanced skip fusion at decoder stage 2 and native variable-length support
+        # Uses MambaSkipFusion to model long temporal interactions in skip connections
+        # at a higher resolution (L/5) for enhanced context integration
+        # No interpolation wrapper needed - model handles variable lengths natively
+        try:
+            from Stage1_3_IMUnet_mamba_merge_up_big_varlen import IMUnet
+            model = IMUnet(in_channels=1, input_length=input_length)
+            # No DenoisingModelWrapper needed - model handles variable lengths natively
+            n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+            print(f"  Loaded IMUnet_Mamba_up_varlen with {n_params:,} parameters for input_length={input_length}")
+        except ImportError as e:
+            raise ImportError(
+                "Stage1_3_IMUnet_mamba_merge_up_big_varlen requires mamba-ssm. "
+                "Install with: pip install mamba-ssm"
+            ) from e
+    elif model_type == 'imunet_mamba_late_varlen':
+        # Stage1_5 IMUnet with Mamba-based late refinement before final output and native variable-length support
+        # Uses MambaLateRefinement for global temporal smoothing on reconstructed sequences
+        # at full resolution (L) before producing the final denoised output
+        # No interpolation wrapper needed - model handles variable lengths natively
+        try:
+            from Stage1_5_IMUnet_mamba_merge_late_big_varlen import IMUnet
+            model = IMUnet(in_channels=1, input_length=input_length)
+            # No DenoisingModelWrapper needed - model handles variable lengths natively
+            n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+            print(f"  Loaded IMUnet_Mamba_late_varlen with {n_params:,} parameters for input_length={input_length}")
+        except ImportError as e:
+            raise ImportError(
+                "Stage1_5_IMUnet_mamba_merge_late_big_varlen requires mamba-ssm. "
+                "Install with: pip install mamba-ssm"
+            ) from e
     elif model_type == 'imunet_mamba_varlen_upconv':
         from Stage1_2_IMUnet_mamba_merge_bn_big_varlen_upconv import IMUnet
         model = IMUnet(in_channels=1, input_length=input_length)
