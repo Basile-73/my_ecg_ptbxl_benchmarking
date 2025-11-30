@@ -268,6 +268,114 @@ class DenoisingModelWrapper(nn.Module):
         return output
 
 
+class MECGEResamplingWrapper(nn.Module):
+    """Wrapper for MECGE models that resamples signals to a target sampling rate.
+
+    This wrapper handles resampling ECG signals before and after MECGE processing.
+    It properly handles MECGE's dual interface: forward(clean, noisy) for training
+    and denoising(noisy) for inference.
+    """
+
+    def __init__(self, base_model: nn.Module, input_length: int = 5000,
+                 original_sampling_rate: int = 500, target_sampling_rate: int = 250):
+        super().__init__()
+        self.base_model = base_model
+        self.input_length = input_length
+        self.original_sampling_rate = original_sampling_rate
+        self.target_sampling_rate = target_sampling_rate
+
+        # Calculate target length and ensure it's compatible with MECGE's STFT hop_size (8)
+        # ISTFT output length can differ from input when length is not divisible by hop_size
+        # Round down to nearest multiple of hop_size to avoid length mismatch in loss computation
+        raw_target_length = int(input_length * target_sampling_rate / original_sampling_rate)
+        hop_size = 8  # MECGE's hop_size parameter
+        self.target_length = (raw_target_length // hop_size) * hop_size
+
+    def forward(self, noisy, clean=None):
+        """
+        Forward pass with resampling.
+
+        Args:
+            noisy: Noisy input tensor
+            clean: Clean reference tensor (required for training, None for inference)
+
+        Returns:
+            During training: loss value from MECGE.forward(clean, noisy)
+            During inference: denoised signal from MECGE.denoising(noisy)
+        """
+        # Training mode: MECGE.forward expects (clean, noisy) and returns loss
+        if clean is not None:
+            # Resample both clean and noisy to target sampling rate
+            clean_resampled = self._resample_to_target(clean)
+            noisy_resampled = self._resample_to_target(noisy)
+            print(f'clean_resampled:{clean_resampled.shape}')
+            print(f'noisy_resampled:{noisy_resampled.shape}')
+
+            # Call MECGE's forward method (returns loss, no resampling needed for output)
+            return self.base_model.forward(clean_resampled, noisy_resampled)
+
+        # Inference mode: MECGE.denoising expects (noisy) and returns denoised signal
+        else:
+            noisy_resampled = self._resample_to_target(noisy)
+            output = self.base_model.denoising(noisy_resampled)
+            output_resampled = self._resample_to_original(output)
+            return output_resampled
+
+    def _resample_to_target(self, x):
+        """Resample signal from original to target sampling rate."""
+        if self.input_length == self.target_length:
+            return x
+
+        original_shape = x.shape
+        is_4d = len(original_shape) == 4
+
+        # Handle both 3D (batch, 1, time) and 4D (batch, 1, 1, time) formats
+        if is_4d:
+            x = x.squeeze(2)
+
+        # Resample
+        x = torch.nn.functional.interpolate(
+            x, size=self.target_length, mode='linear', align_corners=False
+        )
+
+        # Restore 4D format if needed
+        if is_4d:
+            x = x.unsqueeze(2)
+
+        return x
+
+    def _resample_to_original(self, x):
+        """Resample signal from target back to original sampling rate."""
+        if self.input_length == self.target_length:
+            return x
+
+        original_shape = x.shape
+        is_4d = len(original_shape) == 4
+
+        # Handle both 3D and 4D formats
+        if is_4d:
+            x = x.squeeze(2)
+
+        # Resample back
+        x = torch.nn.functional.interpolate(
+            x, size=self.input_length, mode='linear', align_corners=False
+        )
+
+        # Restore 4D format if needed
+        if is_4d:
+            x = x.unsqueeze(2)
+
+        return x
+
+    @torch.no_grad()
+    def denoising(self, noisy):
+        """
+        Inference-only method for denoising.
+        This method exists to make the wrapper detectable as a MECGE model.
+        """
+        return self.forward(noisy, clean=None)
+
+
 def get_model(model_type: str, input_length: int = 5000,
               pretrained_path: Optional[str] = None, is_stage2: bool = False) -> nn.Module:
     """Get model by name."""
@@ -526,29 +634,18 @@ def get_model(model_type: str, input_length: int = 5000,
         from models.MECGE import MECGE
         model = MECGE(config)
     elif model_type == 'mecge_phase_250':
-        # Load MECGE with phase feature configuration
+        # Load MECGE with phase feature configuration and 250 Hz resampling
         config_path = os.path.join(os.path.dirname(__file__), '../denoising_models/my_MECG-E/config/MECGE_phase.yaml')
         with open(config_path, 'r') as f:
             config = yaml.safe_load(f)
         from models.MECGE import MECGE
         base_model = MECGE(config)
-        model = DenoisingModelWrapper(base_model, input_length=input_length, target_length=2500)
-    elif model_type == 'mecge_phase_360':
-        # Load MECGE with phase feature configuration
-        config_path = os.path.join(os.path.dirname(__file__), '../denoising_models/my_MECG-E/config/MECGE_phase.yaml')
-        with open(config_path, 'r') as f:
-            config = yaml.safe_load(f)
-        from models.MECGE import MECGE
-        base_model = MECGE(config)
-        model = DenoisingModelWrapper(base_model, input_length=input_length, target_length=360)
-
-        if pretrained_path and os.path.exists(pretrained_path):
-            model.load_state_dict(torch.load(pretrained_path, weights_only=True))
-
-        n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-        print(f"Loaded {model_type} with {n_params:,} parameters")
-
-        return model
+        model = MECGEResamplingWrapper(
+            base_model=base_model,
+            input_length=input_length,
+            original_sampling_rate=input_length/10, # 10 second records
+            target_sampling_rate=250
+        )
     elif model_type == 'mecge_complex':
         # Load MECGE with complex feature configuration
         config_path = os.path.join(os.path.dirname(__file__), '../denoising_models/my_MECG-E/config/MECGE_complex.yaml')

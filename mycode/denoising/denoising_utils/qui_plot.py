@@ -18,6 +18,27 @@ from .utils import get_model, run_denoise_inference
 from ecg_noise_factory.noise import NoiseFactory
 
 
+# Shared color mapping for models (Stage1 = light, Stage2 = dark)
+# This color map is used across multiple visualization scripts for consistency
+MODEL_COLOR_MAP = {
+    'noisy_input': '#808080',  # Grey (baseline)
+    'fcn': '#aec7e8',         # Light blue (Stage1)
+    'drnet_fcn': '#1f77b4',   # Dark blue (Stage2)
+    'unet': '#ff9896',        # Light red (Stage1)
+    'drnet_unet': '#d62728',  # Dark red (Stage2)
+    'imunet': '#98df8a',      # Light green (Stage1)
+    'drnet_imunet': '#2ca02c', # Dark green (Stage2)
+    'imunet_origin': '#9467bd',    # Purple
+    'mecge_phase': '#C91CB5',
+    'mecge_phase_250': '#c91cc9',
+    'imunet_mamba_bn': '#ff7f0e',  # Orange
+    'imunet_mamba_bottleneck': '#1C8AC9',  # Cyan-blue
+    'imunet_mamba_up': '#17becf',  # Cyan/Teal
+    'imunet_mamba_early': '#391CC9', # Purple-blue
+    'imunet_mamba_late': '#bcbd22',  # Yellow-green
+}
+
+
 def calculate_snr(clean, noisy):
     """Calculate Signal-to-Noise Ratio in dB."""
     signal_power = np.sum(clean ** 2)
@@ -95,23 +116,8 @@ def qui_plot(noise_configs, exp_folder, config, clean_test, models, n_bootstrap_
                 in the color_map dictionary, with any unlisted models appended at the end.
         n_bootstrap_samples: Number of bootstrap samples for confidence intervals (default: 100)
     """
-    # Color mapping for models (Stage1 = light, Stage2 = dark)
-    color_map = {
-        'noisy_input': '#808080',  # Grey (baseline)
-        'fcn': '#aec7e8',         # Light blue (Stage1)
-        'drnet_fcn': '#1f77b4',   # Dark blue (Stage2)
-        'unet': '#ff9896',        # Light red (Stage1)
-        'drnet_unet': '#d62728',  # Dark red (Stage2)
-        'imunet': '#98df8a',      # Light green (Stage1)
-        'drnet_imunet': '#2ca02c', # Dark green (Stage2)
-        'imunet_origin': '#9467bd',    # Purple
-        'mecge_phase': '#C91CB5',
-        'imunet_mamba_bn': '#ff7f0e',  # Orange
-        'imunet_mamba_bottleneck': '#1C8AC9',  # Orange
-        'imunet_mamba_up': '#17becf',  # Cyan/Teal
-        'imunet_mamba_early': '#391CC9', # Magenta/Pink
-        'imunet_mamba_late': '#bcbd22',  # Yellow-green
-    }
+    # Use shared color mapping for consistency across all visualizations
+    color_map = MODEL_COLOR_MAP
 
     # Setup device
     device = torch.device('cuda' if torch.cuda.is_available() and
@@ -433,7 +439,7 @@ def qui_plot(noise_configs, exp_folder, config, clean_test, models, n_bootstrap_
     summary_df = pd.DataFrame(summary_stats)
 
     # Create figure - Grouped by NOISE CONFIG first
-    fig, axes = plt.subplots(1, 2, figsize=(16, 6))
+    fig, axes = plt.subplots(1, 2, figsize=(len(noise_configs)*4, 6))
     fig.suptitle('Model Performance Across Noise Configurations',
                 fontsize=16, fontweight='bold', y=0.98)
 
