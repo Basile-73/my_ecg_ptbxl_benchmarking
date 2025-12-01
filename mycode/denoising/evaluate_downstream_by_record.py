@@ -350,98 +350,55 @@ def load_validation_data_with_labels(datafolder, sampling_rate, val_fold):
     return X_val, record_ids, label_dfs
 
 
-def create_base_dataframes(record_ids, label_dfs):
+def create_base_dataframes(record_ids, diag_type, mlb):
     """
-    Create base DataFrames with record_id and diagnostic_class columns.
+    Create base DataFrame with record_id and diagnostic_class columns for ALL classes.
 
     Args:
         record_ids: List of record IDs
-        label_dfs: Dict with label DataFrames for each diagnostic type
+        diag_type: Diagnostic type string (e.g., 'superdiagnostic')
+        mlb: MultiLabelBinarizer object for this diagnostic type
 
     Returns:
-        Dict with base DataFrames for each diagnostic type
+        DataFrame with record_id and diagnostic_class columns
     """
     print("\n" + "-"*80)
-    print("Creating base DataFrames...")
+    print(f"Creating base DataFrame for {diag_type}...")
     print("-"*80)
 
-    base_dataframes = {}
-    diagnostic_types = ['superdiagnostic', 'subdiagnostic', 'diagnostic']
+    rows = []
 
-    for diag_type in diagnostic_types:
-        label_df = label_dfs[diag_type]
-        rows = []
+    # Get ALL classes from mlb
+    all_classes = list(mlb.classes_)
 
-        # Comment 2: Detect unexpected index mismatches
-        # We expect label_df indices to correspond exactly to validation fold record_ids
-        missing_records = set(record_ids) - set(label_df.index)
-        if missing_records:
-            raise AssertionError(
-                f"Index mismatch for {diag_type}: {len(missing_records)} record(s) from "
-                f"record_ids are missing from label_df.index. "
-                f"Sample missing IDs: {list(missing_records)[:5]}. "
-                f"This indicates a data alignment issue between validation fold and label aggregation."
-            )
+    # Create rows for ALL classes for each record
+    for record_id in record_ids:
+        for diag_class in all_classes:
+            rows.append({
+                'record_id': record_id,
+                'diagnostic_class': diag_class
+            })
 
-        for record_id in record_ids:
-            # Get the list of diagnostic classes for this record
-            diagnostic_classes = label_df.loc[record_id, diag_type]
+    # Convert to DataFrame
+    base_df = pd.DataFrame(rows, columns=['record_id', 'diagnostic_class'])
+    print(f"  {diag_type}: {len(base_df)} rows (expanded from {len(record_ids)} records × {len(all_classes)} classes)")
 
-            # Comment 3: Explicitly handle list, tuple, array, scalar, and NA cases
-            if isinstance(diagnostic_classes, list):
-                # Already a list, keep as is
-                pass
-            elif isinstance(diagnostic_classes, (tuple, np.ndarray)):
-                # Convert tuple or numpy array to Python list
-                diagnostic_classes = list(diagnostic_classes)
-            elif pd.isna(diagnostic_classes):
-                # NA value, convert to empty list
-                diagnostic_classes = []
-            elif isinstance(diagnostic_classes, (str, int, float)):
-                # Scalar value, wrap in a list
-                diagnostic_classes = [diagnostic_classes]
-            else:
-                # Unexpected type
-                raise ValueError(
-                    f"Unexpected type for diagnostic_classes at record {record_id}, "
-                    f"{diag_type}: {type(diagnostic_classes)}. Expected list, tuple, array, or scalar."
-                )
-
-            # Filter out NA/empty strings within the list
-            diagnostic_classes = [
-                dc for dc in diagnostic_classes
-                if pd.notna(dc) and dc != '' and dc is not None
-            ]
-
-            # Create a row for each diagnostic class
-            for diag_class in diagnostic_classes:
-                rows.append({
-                    'record_id': record_id,
-                    'diagnostic_class': diag_class
-                })
-
-        # Convert to DataFrame
-        base_df = pd.DataFrame(rows, columns=['record_id', 'diagnostic_class'])
-        base_dataframes[diag_type] = base_df
-        print(f"  {diag_type}: {len(base_df)} rows (expanded from {len(record_ids)} records)")
-
-    return base_dataframes
+    return base_df
 
 
-def compute_per_record_correctness(y_true, y_pred, record_ids, label_df, diag_type, mlb):
+def compute_per_record_correctness(y_true, y_pred, record_ids, mlb):
     """
-    Compute per-record correctness for each diagnostic class.
+    Compute per-record correctness for ALL diagnostic classes.
 
     Args:
         y_true: Ground truth multi-hot labels (n_samples, n_classes)
         y_pred: Predicted probabilities (n_samples, n_classes)
         record_ids: List of record IDs
-        label_df: DataFrame with record diagnostic assignments
-        diag_type: Type of diagnostic aggregation ('superdiagnostic', 'subdiagnostic', 'diagnostic')
         mlb: MultiLabelBinarizer from classification experiment (for correct class ordering)
 
     Returns:
-        Dict mapping (record_id, diagnostic_class) -> correctness (0 or 1)
+        Dict mapping (record_id, diagnostic_class) -> (correctness, true_label)
+        where correctness is 0 or 1, and true_label is 0 or 1
     """
     correctness_dict = {}
     threshold = 0.5
@@ -449,32 +406,13 @@ def compute_per_record_correctness(y_true, y_pred, record_ids, label_df, diag_ty
     # Create mapping from class names to indices using mlb.classes_
     class_to_idx = {cls: idx for idx, cls in enumerate(mlb.classes_)}
 
-    # Track skipped classes for logging
-    skipped_classes = set()
-
+    # Process ALL classes for each record
     for record_idx, record_id in enumerate(record_ids):
-        # Get the list of diagnostic classes assigned to this record
-        if record_id not in label_df.index:
-            continue
-
-        assigned_classes = label_df.loc[record_id, diag_type]
-
-        # Handle both list and single values
-        if not isinstance(assigned_classes, list):
-            assigned_classes = [assigned_classes] if pd.notna(assigned_classes) else []
-
-        for diag_class in assigned_classes:
-            # Map diagnostic class name to mlb index
-            if diag_class not in class_to_idx:
-                # This diagnostic class wasn't in the classification training set
-                if diag_class not in skipped_classes:
-                    skipped_classes.add(diag_class)
-                continue
-
+        for diag_class in mlb.classes_:
             class_idx = class_to_idx[diag_class]
 
             # Get true label and predicted probability
-            true_label = y_true[record_idx, class_idx]
+            true_label = int(y_true[record_idx, class_idx])
             pred_prob = y_pred[record_idx, class_idx]
 
             # Apply threshold to get binary prediction
@@ -483,23 +421,19 @@ def compute_per_record_correctness(y_true, y_pred, record_ids, label_df, diag_ty
             # Compute correctness
             correctness = 1 if (true_label == binary_pred) else 0
 
-            # Store in results dict
-            correctness_dict[(record_id, diag_class)] = correctness
-
-    # Log skipped classes if any
-    if len(skipped_classes) > 0:
-        print(f"  ⚠️  Skipped {len(skipped_classes)} diagnostic classes not in mlb: {sorted(list(skipped_classes))[:5]}...")
+            # Store both correctness and true_label
+            correctness_dict[(record_id, diag_class)] = (correctness, true_label)
 
     return correctness_dict
 
 
 def expand_and_populate_dataframes(base_dataframes, correctness_results, model_names, classifier_names):
     """
-    Expand base DataFrames with correctness columns for each model/classifier combination.
+    Expand base DataFrames with true_label and correctness columns for each model/classifier combination.
 
     Args:
         base_dataframes: Dict of base DataFrames for each diagnostic type
-        correctness_results: Dict of dicts mapping model -> (record_id, class) -> correctness
+        correctness_results: Dict of dicts mapping model -> (record_id, class) -> (correctness, true_label)
         model_names: List of model names (including 'clean', 'noisy', and denoising models)
         classifier_names: List of classifier names
 
@@ -512,16 +446,29 @@ def expand_and_populate_dataframes(base_dataframes, correctness_results, model_n
         # Create a copy to populate
         result_df = base_df.copy()
 
+        # Add true_label column (extract from any model's results - all have same true_label)
+        # Use robust lookup that checks all model/classifier pairs for the first valid match
+        def get_true_label(row):
+            key = (row['record_id'], row['diagnostic_class'])
+            for model_name in model_names:
+                for clf_name in classifier_names:
+                    result = correctness_results.get(model_name, {}).get(clf_name, {}).get(key)
+                    if result is not None and not (isinstance(result, tuple) and len(result) >= 2 and pd.isna(result[1])):
+                        return result[1] if isinstance(result, tuple) and len(result) >= 2 else np.nan
+            return np.nan
+
+        result_df['true_label'] = result_df.apply(get_true_label, axis=1)
+
         # Add columns for each model/classifier combination
         for model_name in model_names:
             for clf_name in classifier_names:
                 col_name = f"{model_name}_{clf_name}"
 
-                # Populate column
+                # Populate column with correctness (first element of tuple)
                 result_df[col_name] = result_df.apply(
                     lambda row: correctness_results.get(model_name, {}).get(clf_name, {}).get(
-                        (row['record_id'], row['diagnostic_class']), np.nan
-                    ),
+                        (row['record_id'], row['diagnostic_class']), (np.nan, np.nan)
+                    )[0],  # Extract correctness (first element of tuple)
                     axis=1
                 )
 
@@ -586,6 +533,7 @@ def evaluate_downstream_by_record(config_path='code/denoising/configs/denoising_
     X_val_raw, record_ids, label_dfs = load_validation_data_with_labels(
         datafolder, classification_sampling_rate, val_fold
     )
+    # Note: label_dfs no longer used for DataFrame creation; using mlb.classes_ and y_true instead
 
     # ========================================================================
     # Read noise configurations
@@ -696,7 +644,7 @@ def evaluate_downstream_by_record(config_path='code/denoising/configs/denoising_
         # ====================================================================
         # Create base DataFrame for this diagnostic type
         # ====================================================================
-        base_dataframe = create_base_dataframes(record_ids, label_dfs)[diag_type]
+        base_dataframe = create_base_dataframes(record_ids, diag_type, mlb)
         all_base_dataframes[diag_type] = base_dataframe
         print(f"Created base DataFrame: {len(base_dataframe)} rows")
 
@@ -933,9 +881,8 @@ def evaluate_downstream_by_record(config_path='code/denoising/configs/denoising_
                     y_pred = predictions_cache[diag_type][config_name][model_name][clf_name]
 
                     # Compute correctness for this diagnostic type
-                    label_df = label_dfs[diag_type]
                     correctness = compute_per_record_correctness(
-                        y_val, y_pred, record_ids, label_df, diag_type, mlb
+                        y_val, y_pred, record_ids, mlb
                     )
                     all_correctness[model_name][clf_name] = correctness
 

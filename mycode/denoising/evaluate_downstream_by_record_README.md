@@ -24,7 +24,7 @@ The `evaluate_downstream_by_record.py` script extends the downstream classificat
 
 Each classification experiment (`exp1.1.1`, `exp1.1`, `exp1`) is trained on a different subset of classes. The `MultiLabelBinarizer` (mlb.pkl) saved during training encodes the class-to-index mapping. When computing per-record correctness, we must use the **same mlb** that was used during training to ensure correct interpretation of prediction arrays.
 
-**Previous behavior (INCORRECT)**: Used `exp0` for all diagnostic types, causing many classes to be skipped because they weren't in exp0's mlb.
+**Previous behavior (INCORRECT)**: Used `exp0` for all diagnostic types, causing mismatched class encodings.
 
 **New behavior (CORRECT)**: Uses exp1.1.1/exp1.1/exp1 for super/sub/diagnostic types, ensuring all classes are properly evaluated.
 
@@ -129,16 +129,16 @@ For **each noise configuration**:
    ├─ Retrieve cached predictions: y_pred (n_samples × n_classes)
    ├─ For each diagnostic type (super/sub/diagnostic):
    │  ├─ For each record:
-   │  │  ├─ Get assigned diagnostic classes from label_df
-   │  │  ├─ For each diagnostic class:
+   │  │  ├─ For each class in mlb.classes_ (ALL classes):
    │  │  │  ├─ Map class name → mlb index
    │  │  │  ├─ Get y_true[record_idx, class_idx]
    │  │  │  ├─ Get y_pred[record_idx, class_idx]
    │  │  │  ├─ Apply threshold (0.5): binary_pred = (y_pred ≥ 0.5)
    │  │  │  ├─ Compute correctness: (y_true == binary_pred) ? 1 : 0
-   │  │  │  └─ Store: correctness_dict[(record_id, class)] = correctness
-   │  │  └─ Skip classes not in mlb (with warning)
-   │  └─ Return correctness_dict
+   │  │  │  ├─ Compute true_label: int(y_true[record_idx, class_idx])
+   │  │  │  └─ Store: correctness_dict[(record_id, class)] = (correctness, true_label)
+   │  │  └─ Process ALL classes (positive and negative)
+   │  └─ Return correctness_dict with tuples
    └─ Repeat for all diagnostic types
 ```
 
@@ -149,17 +149,18 @@ For **each diagnostic type** (superdiagnostic, subdiagnostic, diagnostic):
 ```
 1. Create base DataFrame
    ├─ For each record_id:
-   │  ├─ Get list of diagnostic classes
+   │  ├─ Get ALL diagnostic classes from mlb.classes_
    │  └─ Create one row per class:
    │     └─ {record_id: <id>, diagnostic_class: <class>}
-   └─ Result: Expanded DataFrame (n_rows = total class assignments)
+   └─ Result: Expanded DataFrame (n_rows = n_records × n_classes)
 
-2. Add correctness columns
+2. Add true_label and correctness columns
+   ├─ Add true_label column (from y_true array)
    ├─ For each (denoising_model, classifier) combination:
    │  ├─ Column name: "{model}_{classifier}"
    │  │  (e.g., "clean_fastai_xresnet1d101", "fcn_fastai_inception1d")
    │  └─ Populate with correctness values (0/1/NaN)
-   └─ Result: DataFrame with record_id, diagnostic_class, and model columns
+   └─ Result: DataFrame with record_id, diagnostic_class, true_label, and model columns
 
 3. Save to CSV
    └─ Filename: "{diagnostic_type}_{noise_config_name}_by_record.csv"
@@ -192,33 +193,40 @@ output/{experiment_name}/downstream_results/by_sample/
 Each CSV has the following structure:
 
 ```csv
-record_id,diagnostic_class,clean_fastai_xresnet1d101,clean_fastai_inception1d,noisy_fastai_xresnet1d101,noisy_fastai_inception1d,fcn_fastai_xresnet1d101,fcn_fastai_inception1d,...
-12345,NORM,1,1,0,0,1,1,...
-12345,MI,1,0,0,0,0,1,...
-12346,NORM,1,1,1,1,1,1,...
-12347,STTC,0,1,0,0,0,0,...
-12347,LVH,1,1,0,0,1,1,...
+record_id,diagnostic_class,true_label,clean_fastai_xresnet1d101,clean_fastai_inception1d,noisy_fastai_xresnet1d101,noisy_fastai_inception1d,fcn_fastai_xresnet1d101,fcn_fastai_inception1d,...
+12345,NORM,1,1,1,0,0,1,1,...
+12345,MI,1,1,0,0,0,0,1,...
+12345,STTC,0,1,1,1,1,1,1,...
+12345,CD,0,0,0,0,0,0,0,...
+12345,HYP,0,1,1,0,0,1,1,...
+12346,NORM,1,1,1,1,1,1,1,...
+12346,MI,0,0,0,0,0,0,0,...
 ```
 
 **Columns**:
 - `record_id`: PTB-XL ecg_id
 - `diagnostic_class`: Diagnostic class name (e.g., NORM, MI, STTC)
+- `true_label`: Ground truth label (1=positive, 0=negative)
 - `{model}_{classifier}`: Binary correctness (1=correct, 0=wrong, NaN=skipped)
 
-**Rows**: One row per (record, diagnostic_class) pair
+**Rows**: One row per (record, diagnostic_class) pair for ALL classes (positive and negative)
 
 ### Example: Multi-Label Expansion
 
-If record `12345` has labels `[NORM, MI]`:
+If record `12345` has positive labels `[NORM, MI]` (for superdiagnostic with 5 total classes):
 
 ```
-Original (1 record):
+Original (1 record with 2 positive labels):
   record_id: 12345
-  labels: [NORM, MI]
+  positive_labels: [NORM, MI]
+  all_classes: [NORM, MI, STTC, CD, HYP]  # for superdiagnostic
 
-Expanded (2 rows):
-  Row 1: record_id=12345, diagnostic_class=NORM, clean_xresnet=1, noisy_xresnet=0, ...
-  Row 2: record_id=12345, diagnostic_class=MI, clean_xresnet=1, noisy_xresnet=0, ...
+Expanded (5 rows - one per class):
+  Row 1: record_id=12345, diagnostic_class=NORM, true_label=1, clean_xresnet=1, ...
+  Row 2: record_id=12345, diagnostic_class=MI, true_label=1, clean_xresnet=1, ...
+  Row 3: record_id=12345, diagnostic_class=STTC, true_label=0, clean_xresnet=1, ...
+  Row 4: record_id=12345, diagnostic_class=CD, true_label=0, clean_xresnet=0, ...
+  Row 5: record_id=12345, diagnostic_class=HYP, true_label=0, clean_xresnet=1, ...
 ```
 
 ## Usage
@@ -317,12 +325,16 @@ PTB-XL records can have multiple diagnostic labels. The script handles this by:
 3. **Independent correctness**: Each class is evaluated independently using threshold 0.5
 
 **Example**:
-- Record has labels: `[NORM, MI]`
-- Prediction probabilities: `{NORM: 0.8, MI: 0.3, STTC: 0.1}`
-- Binary predictions (threshold 0.5): `{NORM: 1, MI: 0, STTC: 0}`
+- Record has positive labels: `[NORM, MI]`
+- All classes: `[NORM, MI, STTC, CD, HYP]`
+- Prediction probabilities: `{NORM: 0.8, MI: 0.3, STTC: 0.1, CD: 0.05, HYP: 0.6}`
+- Binary predictions (threshold 0.5): `{NORM: 1, MI: 0, STTC: 0, CD: 0, HYP: 1}`
 - Correctness:
-  - NORM: `1 == 1` → **1** (correct)
-  - MI: `1 == 0` → **0** (wrong)
+  - NORM (true=1): `1 == 1` → **1** (correct - true positive)
+  - MI (true=1): `1 == 0` → **0** (wrong - false negative)
+  - STTC (true=0): `0 == 0` → **1** (correct - true negative)
+  - CD (true=0): `0 == 0` → **1** (correct - true negative)
+  - HYP (true=0): `0 == 1` → **0** (wrong - false positive)
 
 ### Class Mapping with MultiLabelBinarizer
 
@@ -448,6 +460,34 @@ heavy = pd.read_csv('superdiagnostic_heavy_by_record.csv')
 # Compare clean baseline across noise levels
 print(f"Clean accuracy (light): {light['clean_fastai_xresnet1d101'].mean():.3f}")
 print(f"Clean accuracy (default): {default['clean_fastai_xresnet1d101'].mean():.3f}")
+```
+
+### 4. False Positive/Negative Analysis
+
+Analyze classification errors by type:
+
+```python
+# Load results
+df = pd.read_csv('superdiagnostic_default_by_record.csv')
+
+# Analyze a specific model
+model_col = 'clean_fastai_xresnet1d101'
+
+# True positives: true_label=1, correctness=1
+tp = df[(df['true_label'] == 1) & (df[model_col] == 1)]
+
+# False negatives: true_label=1, correctness=0
+fn = df[(df['true_label'] == 1) & (df[model_col] == 0)]
+
+# True negatives: true_label=0, correctness=1
+tn = df[(df['true_label'] == 0) & (df[model_col] == 1)]
+
+# False positives: true_label=0, correctness=0
+fp = df[(df['true_label'] == 0) & (df[model_col] == 0)]
+
+print(f"TP: {len(tp)}, FN: {len(fn)}, TN: {len(tn)}, FP: {len(fp)}")
+print(f"Sensitivity: {len(tp)/(len(tp)+len(fn)):.3f}")
+print(f"Specificity: {len(tn)/(len(tn)+len(fp)):.3f}")
 print(f"Clean accuracy (heavy): {heavy['clean_fastai_xresnet1d101'].mean():.3f}")
 ```
 
@@ -476,12 +516,6 @@ print(f"Degraded: {len(degraded)} / {len(df)} ({100*len(degraded)/len(df):.1f}%)
 
 **Solution**: Check `val_fold` in config.yaml. PTB-XL uses folds 1-10.
 
-### Issue: "Skipped N diagnostic classes not in mlb"
-
-**Cause**: Label aggregation produced classes not in classification training set.
-
-**Expected behavior**: This is normal if classification was trained on a subset of classes. The script logs skipped classes and continues.
-
 ### Issue: Out of memory during prediction generation
 
 **Solutions**:
@@ -495,7 +529,7 @@ print(f"Degraded: {len(degraded)} / {len(df)} ({100*len(degraded)/len(df):.1f}%)
 **Causes**:
 1. Model failed to load (check logs for warnings)
 2. Prediction generation failed (check error messages)
-3. Diagnostic class not in MLB (expected, see "Skipped classes" warning)
+3. Predictions for a given model/classifier combination are missing from cache
 
 **Check**: Look for `⚠️` warnings in console output.
 
@@ -535,9 +569,11 @@ Each CSV file size depends on:
 - Number of diagnostic classes per record
 - Number of model combinations
 
-**Typical size**: 1-5 MB per CSV
+**Typical size**: 5-20 MB per CSV (due to all-class expansion)
 
-**Total**: 3 × n_noise_configs × (1-5 MB)
+**Total**: 3 × n_noise_configs × (5-20 MB)
+
+**Note**: Size increased due to including all classes (positive and negative) for each record
 
 ### Memory Usage
 
@@ -606,14 +642,6 @@ python reproduce_results.py  # Will skip existing experiments by default
 # Or force re-run for specific experiment:
 # Edit reproduce_results.py to only include the problematic experiment
 ```
-
-### Warning: "Skipped N diagnostic classes not in mlb"
-
-**Explanation**: Some diagnostic classes from PTB-XL labels don't appear in the classification training set (likely filtered out due to insufficient samples).
-
-**Expected behavior**: This is normal. The script skips these classes and continues with available classes.
-
-**Not a problem** unless you see this for many common classes (NORM, MI, STTC, etc.).
 
 ### Memory Issues (CUDA out of memory)
 
