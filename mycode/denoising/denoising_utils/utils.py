@@ -387,6 +387,14 @@ def get_model(model_type: str, input_length: int = 5000,
     mecge_path = os.path.join(os.path.dirname(__file__), '../denoising_models/my_MECG-E')
     sys.path.insert(0, mecge_path)
 
+    # Add MECGE models directory to path to avoid collision with classification 'models' package
+    mecge_root = os.path.join(os.path.dirname(__file__), '../denoising_models/my_MECG-E')
+    mecge_models_path = os.path.join(mecge_root, 'models')
+    if mecge_root not in sys.path:
+        sys.path.insert(0, mecge_root)
+    if mecge_models_path not in sys.path:
+        sys.path.insert(0, mecge_models_path)
+
     # Add mamba_stft_unet folder to path (it's in denoising_models/mamba_stft_unet)
     mamba_stft_unet_path = os.path.join(os.path.dirname(__file__), '../denoising_models/mamba_stft_unet')
     sys.path.insert(0, mamba_stft_unet_path)
@@ -631,14 +639,14 @@ def get_model(model_type: str, input_length: int = 5000,
         config_path = os.path.join(os.path.dirname(__file__), '../denoising_models/my_MECG-E/config/MECGE_phase.yaml')
         with open(config_path, 'r') as f:
             config = yaml.safe_load(f)
-        from models.MECGE import MECGE
+        from MECGE import MECGE
         model = MECGE(config)
     elif model_type == 'mecge_phase_250':
         # Load MECGE with phase feature configuration and 250 Hz resampling
         config_path = os.path.join(os.path.dirname(__file__), '../denoising_models/my_MECG-E/config/MECGE_phase.yaml')
         with open(config_path, 'r') as f:
             config = yaml.safe_load(f)
-        from models.MECGE import MECGE
+        from MECGE import MECGE
         base_model = MECGE(config)
         model = MECGEResamplingWrapper(
             base_model=base_model,
@@ -651,7 +659,7 @@ def get_model(model_type: str, input_length: int = 5000,
         config_path = os.path.join(os.path.dirname(__file__), '../denoising_models/my_MECG-E/config/MECGE_complex.yaml')
         with open(config_path, 'r') as f:
             config = yaml.safe_load(f)
-        from models.MECGE import MECGE
+        from MECGE import MECGE
         model = MECGE(config)
 
         if pretrained_path and os.path.exists(pretrained_path):
@@ -666,7 +674,7 @@ def get_model(model_type: str, input_length: int = 5000,
         config_path = os.path.join(os.path.dirname(__file__), '../denoising_models/my_MECG-E/config/MECGE_wav.yaml')
         with open(config_path, 'r') as f:
             config = yaml.safe_load(f)
-        from models.MECGE import MECGE
+        from MECGE import MECGE
         model = MECGE(config)
 
         if pretrained_path and os.path.exists(pretrained_path):
@@ -690,7 +698,7 @@ def get_model(model_type: str, input_length: int = 5000,
             config = yaml.safe_load(f)
 
         try:
-            from models.MECGE_varlen import MECGE
+            from MECGE_varlen import MECGE
             model = MECGE(config)
 
             if pretrained_path and os.path.exists(pretrained_path):
@@ -716,7 +724,7 @@ def get_model(model_type: str, input_length: int = 5000,
             config = yaml.safe_load(f)
 
         try:
-            from models.MECGE_varlen import MECGE
+            from MECGE_varlen import MECGE
             model = MECGE(config)
 
             if pretrained_path and os.path.exists(pretrained_path):
@@ -742,7 +750,7 @@ def get_model(model_type: str, input_length: int = 5000,
             config = yaml.safe_load(f)
 
         try:
-            from models.MECGE_varlen import MECGE
+            from MECGE_varlen import MECGE
             model = MECGE(config)
 
             if pretrained_path and os.path.exists(pretrained_path):

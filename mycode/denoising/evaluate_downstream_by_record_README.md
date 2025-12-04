@@ -194,20 +194,20 @@ Each CSV has the following structure:
 
 ```csv
 record_id,diagnostic_class,true_label,clean_fastai_xresnet1d101,clean_fastai_inception1d,noisy_fastai_xresnet1d101,noisy_fastai_inception1d,fcn_fastai_xresnet1d101,fcn_fastai_inception1d,...
-12345,NORM,1,1,1,0,0,1,1,...
-12345,MI,1,1,0,0,0,0,1,...
-12345,STTC,0,1,1,1,1,1,1,...
-12345,CD,0,0,0,0,0,0,0,...
-12345,HYP,0,1,1,0,0,1,1,...
-12346,NORM,1,1,1,1,1,1,1,...
-12346,MI,0,0,0,0,0,0,0,...
+12345,NORM,1,0.95,0.92,0.45,0.38,0.89,0.91,...
+12345,MI,1,0.87,0.62,0.23,0.15,0.34,0.78,...
+12345,STTC,0,0.12,0.08,0.55,0.61,0.67,0.73,...
+12345,CD,0,0.03,0.02,0.11,0.09,0.05,0.04,...
+12345,HYP,0,0.88,0.85,0.29,0.18,0.92,0.87,...
+12346,NORM,1,0.98,0.96,0.91,0.89,0.94,0.93,...
+12346,MI,0,0.02,0.01,0.05,0.03,0.04,0.02,...
 ```
 
 **Columns**:
 - `record_id`: PTB-XL ecg_id
 - `diagnostic_class`: Diagnostic class name (e.g., NORM, MI, STTC)
 - `true_label`: Ground truth label (1=positive, 0=negative)
-- `{model}_{classifier}`: Binary correctness (1=correct, 0=wrong, NaN=skipped)
+- `{model}_{classifier}`: Predicted probability (0.0-1.0 range, with sigmoid applied for fastai models)
 
 **Rows**: One row per (record, diagnostic_class) pair for ALL classes (positive and negative)
 
@@ -322,19 +322,20 @@ PTB-XL records can have multiple diagnostic labels. The script handles this by:
 
 1. **Expansion**: Each record with N labels becomes N rows
 2. **Per-class evaluation**: Each row represents one (record, class) pair
-3. **Independent correctness**: Each class is evaluated independently using threshold 0.5
+3. **Probability storage**: Raw prediction probabilities (0.0-1.0) are stored for downstream threshold analysis
 
 **Example**:
 - Record has positive labels: `[NORM, MI]`
 - All classes: `[NORM, MI, STTC, CD, HYP]`
 - Prediction probabilities: `{NORM: 0.8, MI: 0.3, STTC: 0.1, CD: 0.05, HYP: 0.6}`
-- Binary predictions (threshold 0.5): `{NORM: 1, MI: 0, STTC: 0, CD: 0, HYP: 1}`
-- Correctness:
-  - NORM (true=1): `1 == 1` → **1** (correct - true positive)
-  - MI (true=1): `1 == 0` → **0** (wrong - false negative)
-  - STTC (true=0): `0 == 0` → **1** (correct - true negative)
-  - CD (true=0): `0 == 0` → **1** (correct - true negative)
-  - HYP (true=0): `0 == 1` → **0** (wrong - false positive)
+- Stored as raw probabilities for flexible downstream analysis
+- Users can apply custom thresholds (e.g., 0.5) to compute binary predictions and metrics
+- Example with threshold 0.5:
+  - NORM (true=1, pred=0.8): Above threshold → true positive
+  - MI (true=1, pred=0.3): Below threshold → false negative
+  - STTC (true=0, pred=0.1): Below threshold → true negative
+  - CD (true=0, pred=0.05): Below threshold → true negative
+  - HYP (true=0, pred=0.6): Above threshold → false positive
 
 ### Class Mapping with MultiLabelBinarizer
 

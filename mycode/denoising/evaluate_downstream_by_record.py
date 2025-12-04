@@ -386,22 +386,22 @@ def create_base_dataframes(record_ids, diag_type, mlb):
     return base_df
 
 
-def compute_per_record_correctness(y_true, y_pred, record_ids, mlb):
+def compute_per_record_probabilities(y_true, y_pred, record_ids, mlb):
     """
-    Compute per-record correctness for ALL diagnostic classes.
+    Compute per-record probabilities for ALL diagnostic classes.
 
     Args:
         y_true: Ground truth multi-hot labels (n_samples, n_classes)
-        y_pred: Predicted probabilities (n_samples, n_classes)
+        y_pred: Predicted probabilities (n_samples, n_classes) - must be in [0, 1] range
+                For fastai models, sigmoid should be applied before passing to this function
         record_ids: List of record IDs
         mlb: MultiLabelBinarizer from classification experiment (for correct class ordering)
 
     Returns:
-        Dict mapping (record_id, diagnostic_class) -> (correctness, true_label)
-        where correctness is 0 or 1, and true_label is 0 or 1
+        Dict mapping (record_id, diagnostic_class) -> (probability, true_label)
+        where probability is a float (0.0 to 1.0), and true_label is 0 or 1
     """
-    correctness_dict = {}
-    threshold = 0.5
+    probability_dict = {}
 
     # Create mapping from class names to indices using mlb.classes_
     class_to_idx = {cls: idx for idx, cls in enumerate(mlb.classes_)}
@@ -415,25 +415,19 @@ def compute_per_record_correctness(y_true, y_pred, record_ids, mlb):
             true_label = int(y_true[record_idx, class_idx])
             pred_prob = y_pred[record_idx, class_idx]
 
-            # Apply threshold to get binary prediction
-            binary_pred = 1 if pred_prob >= threshold else 0
+            # Store probability and true_label
+            probability_dict[(record_id, diag_class)] = (pred_prob, true_label)
 
-            # Compute correctness
-            correctness = 1 if (true_label == binary_pred) else 0
-
-            # Store both correctness and true_label
-            correctness_dict[(record_id, diag_class)] = (correctness, true_label)
-
-    return correctness_dict
+    return probability_dict
 
 
-def expand_and_populate_dataframes(base_dataframes, correctness_results, model_names, classifier_names):
+def expand_and_populate_dataframes(base_dataframes, probability_results, model_names, classifier_names):
     """
-    Expand base DataFrames with true_label and correctness columns for each model/classifier combination.
+    Expand base DataFrames with true_label and probability columns for each model/classifier combination.
 
     Args:
         base_dataframes: Dict of base DataFrames for each diagnostic type
-        correctness_results: Dict of dicts mapping model -> (record_id, class) -> (correctness, true_label)
+        probability_results: Dict of dicts mapping model -> (record_id, class) -> (probability, true_label)
         model_names: List of model names (including 'clean', 'noisy', and denoising models)
         classifier_names: List of classifier names
 
@@ -452,7 +446,7 @@ def expand_and_populate_dataframes(base_dataframes, correctness_results, model_n
             key = (row['record_id'], row['diagnostic_class'])
             for model_name in model_names:
                 for clf_name in classifier_names:
-                    result = correctness_results.get(model_name, {}).get(clf_name, {}).get(key)
+                    result = probability_results.get(model_name, {}).get(clf_name, {}).get(key)
                     if result is not None and not (isinstance(result, tuple) and len(result) >= 2 and pd.isna(result[1])):
                         return result[1] if isinstance(result, tuple) and len(result) >= 2 else np.nan
             return np.nan
@@ -464,11 +458,11 @@ def expand_and_populate_dataframes(base_dataframes, correctness_results, model_n
             for clf_name in classifier_names:
                 col_name = f"{model_name}_{clf_name}"
 
-                # Populate column with correctness (first element of tuple)
+                # Populate column with probability (first element of tuple)
                 result_df[col_name] = result_df.apply(
-                    lambda row: correctness_results.get(model_name, {}).get(clf_name, {}).get(
+                    lambda row: probability_results.get(model_name, {}).get(clf_name, {}).get(
                         (row['record_id'], row['diagnostic_class']), (np.nan, np.nan)
-                    )[0],  # Extract correctness (first element of tuple)
+                    )[0],  # Extract probability (first element of tuple)
                     axis=1
                 )
 
@@ -842,28 +836,28 @@ def evaluate_downstream_by_record(config_path='code/denoising/configs/denoising_
                 torch.cuda.empty_cache()
 
         # ====================================================================
-        # PHASE 2: COMPUTE PER-RECORD CORRECTNESS FOR THIS DIAGNOSTIC TYPE
+        # PHASE 2: COMPUTE PER-RECORD PROBABILITIES FOR THIS DIAGNOSTIC TYPE
         # ====================================================================
         print("\n" + "="*80)
-        print(f"PHASE 2: COMPUTING CORRECTNESS FOR {diag_type.upper()}")
+        print(f"PHASE 2: COMPUTING PROBABILITIES FOR {diag_type.upper()}")
         print("="*80)
 
-        for noise_config in tqdm(noise_configs, desc=f"Computing correctness ({diag_type})", position=1):
+        for noise_config in tqdm(noise_configs, desc=f"Computing probabilities ({diag_type})", position=1):
             config_name = noise_config['name']
 
             print(f"\n{'='*80}")
-            print(f"Computing correctness for: {config_name}")
+            print(f"Computing probabilities for: {config_name}")
             print(f"{'='*80}")
 
             # Get model names from cached predictions (excluding data keys)
             model_names = [k for k in predictions_cache[diag_type][config_name].keys() if k not in ['X_clean', 'X_noisy']]
 
-            # Initialize correctness storage
-            all_correctness = {}
+            # Initialize probabilities storage
+            all_probabilities = {}
 
             # Process each model
             for model_name in model_names:
-                all_correctness[model_name] = {}
+                all_probabilities[model_name] = {}
 
                 # Check if predictions exist for this model
                 if model_name not in predictions_cache[diag_type][config_name]:
@@ -880,21 +874,28 @@ def evaluate_downstream_by_record(config_path='code/denoising/configs/denoising_
                     # Retrieve cached predictions
                     y_pred = predictions_cache[diag_type][config_name][model_name][clf_name]
 
-                    # Compute correctness for this diagnostic type
-                    correctness = compute_per_record_correctness(
-                        y_val, y_pred, record_ids, mlb
+                    # Apply sigmoid to convert logits to probabilities for fastai models
+                    # (wavelet models already output probabilities)
+                    if 'fastai' in clf_name:
+                        y_pred_prob = 1 / (1 + np.exp(-y_pred))
+                    else:
+                        y_pred_prob = y_pred
+
+                    # Compute probabilities for this diagnostic type
+                    probabilities = compute_per_record_probabilities(
+                        y_val, y_pred_prob, record_ids, mlb
                     )
-                    all_correctness[model_name][clf_name] = correctness
+                    all_probabilities[model_name][clf_name] = probabilities
 
             # ================================================================
             # Save results for this diagnostic type
             # ================================================================
-            print(f"\n--- Saving {diag_type} results for {config_name} ---")
+            print(f"\n--- Saving {diag_type} probability results for {config_name} ---")
 
             # Populate DataFrame
             populated_df = expand_and_populate_dataframes(
                 {diag_type: all_base_dataframes[diag_type]},
-                all_correctness,
+                all_probabilities,
                 model_names,
                 classifier_names
             )[diag_type]
@@ -902,7 +903,7 @@ def evaluate_downstream_by_record(config_path='code/denoising/configs/denoising_
             # Save to CSV
             output_path = os.path.join(
                 results_folder,
-                f"{diag_type}_{config_name}_by_record.csv"
+                f"{diag_type}_{config_name}_by_record_probabilities.csv"
             )
             populated_df.to_csv(output_path, index=False)
             print(f"  ✓ Saved: {output_path}")
