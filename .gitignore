@@ -22,6 +22,7 @@ output/
 ecg_noise/
 logs/
 **configs/
+**.pth
 
 #ide
 .vscode/*
