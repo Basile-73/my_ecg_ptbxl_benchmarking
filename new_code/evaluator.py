@@ -20,10 +20,12 @@ class Evaluator:
         )
 
         self.simulation_params = simulation_params
+        self.duration = simulation_params["duration"]
+        self.model_name = model_name
         self.model = get_model(model_name)
         self.model
         self.model.load_state_dict(
-            torch.load(f"model_weights/best_{model_name}.pth")
+            torch.load(f"model_weights/best_{self.simulation_params['duration']}s_{model_name}.pth")
         )
 
 
@@ -108,8 +110,13 @@ class Evaluator:
             "ci_high": [ci_rmses[1], ci_snrs[1]],
         })
 
-# # example usage
-# config_path = Path('configs/train_config.yaml')
-# evaluator = Evaluator(config_path)
-# evaluator.plot_examples(6)
-# evaluator.results
+    def save_results(self):
+        path = Path(f"outputs/results_{self.duration}s_{self.model_name}.csv")
+        self.results.to_csv(path, sep=",")
+
+# example usage
+config_path = Path('configs/train_config.yaml')
+evaluator = Evaluator(config_path)
+evaluator.plot_examples(6)
+evaluator.results
+evaluator.save_results()

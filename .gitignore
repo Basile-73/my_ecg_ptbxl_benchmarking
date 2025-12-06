@@ -27,3 +27,5 @@ logs/
 #ide
 .vscode/*
 .claude
+
+new_code/outputs/

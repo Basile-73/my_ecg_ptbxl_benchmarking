@@ -64,7 +64,8 @@ class SimpleTrainer:
         )
 
         self.model_name = model_name
-        self.model = get_model(model_name)
+        sequence_length = simulation_params["duration"] * simulation_params["sampling_rate"]
+        self.model = get_model(model_name, sequence_length = sequence_length)
         self.loss_fn = get_loss_function(training_config["loss_function"])
         self.optimizer = get_optimizer(
             training_config["optimizer"], self.model.parameters()
@@ -123,7 +124,7 @@ class SimpleTrainer:
             if test_loss < best:
                 best, wait = test_loss, 0
                 torch.save(
-                    self.model.state_dict(), f"model_weights/best_{self.model_name}.pth"
+                    self.model.state_dict(), f"model_weights/best_{self.simulation_params['duration']}s_{self.model_name}.pth"
                 )
             else:
                 wait += 1
@@ -132,7 +133,7 @@ class SimpleTrainer:
                     break
 
         self.model.load_state_dict(
-            torch.load(f"model_weights/best_{self.model_name}.pth")
+            torch.load(f"model_weights/best_{self.simulation_params['duration']}s_{self.model_name}.pth")
         )
         self.train_loss_history = train_loss_history
         self.test_loss_history = test_loss_history

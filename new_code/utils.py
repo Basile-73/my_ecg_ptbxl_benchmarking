@@ -15,8 +15,12 @@ from scipy.signal import butter, filtfilt
 def get_model(model_name: str, **kwargs):
     if model_name == "imunet":
         from models.Stage1_IMUnet import IMUnet
-
-        return IMUnet()
+        sequence_length = kwargs.get('sequence_length')
+        return IMUnet(input_length=sequence_length)
+    elif model_name == "imunet_mamba":
+        from models.Stage1_IMUnet_Mamba import IMUnet
+        sequence_length = kwargs.get('sequence_length')
+        return IMUnet(input_length=sequence_length)
     else:
         print(f"Model ({model_name}) not found")
 
