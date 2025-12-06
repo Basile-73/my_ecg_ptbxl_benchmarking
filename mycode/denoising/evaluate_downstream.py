@@ -635,17 +635,51 @@ def plot_downstream_results(results_df, output_folder):
     Creates one PNG file per classification model showing all denoising approaches.
     """
 
+    # Comprehensive color map for consistent styling across all plots
+    color_map = {
+        'noisy_input': '#808080',  # Grey (baseline)
+        'fcn': '#aec7e8',         # Light blue (Stage1)
+        'drnet_fcn': '#1f77b4',   # Dark blue (Stage2)
+        'unet': '#ff9896',        # Light red (Stage1)
+        'drnet_unet': '#d62728',  # Dark red (Stage2)
+        'imunet': '#98df8a',      # Light green (Stage1)
+        'drnet_imunet': '#2ca02c', # Dark green (Stage2)
+        'imunet_origin': '#9467bd',    # Purple
+        'mecge_phase': '#C91CB5',
+        'imunet_mamba_bn': '#ff7f0e',  # Orange
+        'imunet_mamba_bottleneck': '#1C8AC9',  # Orange
+        'imunet_mamba_up': '#17becf',  # Cyan/Teal
+        'imunet_mamba_early': '#391CC9', # Magenta/Pink
+        'imunet_mamba_late': '#bcbd22',  # Yellow-green
+    }
+
     sns.set_style("whitegrid")
 
     classifiers = results_df['classification_model'].unique()
 
     # Create one figure per classifier
     for clf_name in classifiers:
-        fig, ax = plt.subplots(figsize=(10, max(8, len(results_df['denoising_model'].unique()) * 0.5)))
+        fig, ax = plt.subplots(figsize=(10, len(results_df['denoising_model'].unique()) * 0.5))
 
         # Filter data for this classifier
         clf_data = results_df[results_df['classification_model'] == clf_name].copy()
-        clf_data = clf_data.sort_values('auc', ascending=True)
+
+        # Order models according to colormap for consistent visual grouping
+        all_denoise_models = clf_data['denoising_model'].unique().tolist()
+        colormap_order = list(color_map.keys())
+        # Filter to include only models that are in the data (excluding 'clean' and 'noisy')
+        ordered_models = [m for m in colormap_order if m in all_denoise_models and m not in ['clean', 'noisy']]
+        # Find any models not in the colormap
+        unlisted_models = [m for m in all_denoise_models if m not in color_map and m not in ['clean', 'noisy']]
+        # Combine them: colormap order first, then unlisted
+        sorted_models = ordered_models + unlisted_models
+        # Prepend baseline models at the beginning
+        baseline_models = [m for m in ['clean', 'noisy'] if m in all_denoise_models]
+        sorted_models = baseline_models + sorted_models
+        # Reorder DataFrame
+        clf_data['model_order'] = clf_data['denoising_model'].apply(lambda x: sorted_models.index(x) if x in sorted_models else len(sorted_models))
+        clf_data = clf_data.sort_values('model_order', ascending=True)
+        clf_data = clf_data.drop('model_order', axis=1)
 
         # Prepare data for plotting
         denoise_models = clf_data['denoising_model'].values
@@ -657,17 +691,15 @@ def plot_downstream_results(results_df, output_folder):
         yerr_lower = aucs - auc_lowers
         yerr_upper = auc_uppers - aucs
 
-        # Assign colors
+        # Assign colors using color_map for consistency
         colors = []
         for model in denoise_models:
             if model == 'clean':
-                colors.append('#2ecc71')  # Green
+                colors.append('#ABABAB')  # Green for clean baseline
             elif model == 'noisy':
-                colors.append('#e74c3c')  # Red
-            elif 'stage2' in model.lower() or 'drnet' in model.lower():
-                colors.append('#9b59b6')  # Purple (Stage2)
+                colors.append('#808080')  # Red for noisy baseline
             else:
-                colors.append('#3498db')  # Blue (Stage1)
+                colors.append(color_map.get(model, '#cccccc'))  # Use color_map, default to grey
 
         # Create horizontal bar plot
         y_pos = np.arange(len(denoise_models))
@@ -676,21 +708,23 @@ def plot_downstream_results(results_df, output_folder):
                       linewidth=1, capsize=4)
 
         ax.set_yticks(y_pos)
-        ax.set_yticklabels(denoise_models, fontsize=9)
-        ax.set_xlabel('AUC (macro)', fontsize=11, fontweight='bold')
+        ax.set_yticklabels(denoise_models, fontsize=13)
+        ax.set_xlabel('AUC (macro)', fontsize=15, fontweight='bold')
         ax.set_title(f'Downstream ECG Classification Performance - {clf_name}',
-                    fontsize=13, fontweight='bold', pad=15)
+                    fontsize=17, fontweight='bold', pad=15)
         ax.grid(True, alpha=0.3, axis='x')
 
-        # Add value labels
+        # Add value labels above upper confidence interval
         for i, (auc, lower, upper) in enumerate(zip(aucs, auc_lowers, auc_uppers)):
-            ax.text(auc + 0.01, i, f'{auc:.4f}',
-                   va='center', fontsize=8, fontweight='bold')
+            ax.text(upper + 0.01, i, f'{auc:.4f}',
+                   ha='left', va='center', fontsize=12, fontweight='bold',
+                   bbox=dict(boxstyle='round,pad=0.3', facecolor='white',
+                            edgecolor='none', alpha=0.7))
 
-        # Set x-axis limits
+        # Set x-axis limits (increased max to accommodate rotated text)
         all_values = np.concatenate([auc_lowers, auc_uppers])
         x_min = max(0.5, all_values.min() - 0.02)
-        x_max = min(1.0, all_values.max() + 0.05)
+        x_max = min(1.0, all_values.max() + 0.08)
         ax.set_xlim([x_min, x_max])
 
         plt.tight_layout()

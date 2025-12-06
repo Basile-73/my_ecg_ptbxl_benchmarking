@@ -2,6 +2,7 @@ from models.timeseries_utils import *
 
 from fastai.vision.all import *
 from fastai.callback.tracker import SaveModelCallback
+from fastai.callback.training import GradientClip as GradientClipping
 
 # Re-import ToTensor after fastai imports to avoid name conflict
 from models.timeseries_utils import ToTensor, TimeseriesDatasetCrops
@@ -159,26 +160,20 @@ def lr_find_plot(learner, path, filename="lr_find", n_skip=10, n_skip_end=2):
     plt.switch_backend(backend_old)
 
 def losses_plot(learner, path, filename="losses", last:int=None):
-    '''saves lr_find plot as file (normally only jupyter output)
-    on the x-axis is lrs[-1]
+    '''saves losses plot as file (normally only jupyter output)
+    Uses the built-in fastai plot_loss method
     '''
     backend_old= matplotlib.get_backend()
     plt.switch_backend('agg')
-    plt.clf()  # Clear the current figure
-    plt.ylabel("loss")
-    plt.xlabel("Batches processed")
 
-    last = ifnone(last,len(learner.recorder.nb_batches))
-    l_b = np.sum(learner.recorder.nb_batches[-last:])
-    iterations = range_of(learner.recorder.losses)[-l_b:]
-    plt.plot(iterations, learner.recorder.losses[-l_b:], label='Train')
-    val_iter = learner.recorder.nb_batches[-last:]
-    val_iter = np.cumsum(val_iter)+np.sum(learner.recorder.nb_batches[:-last])
-    plt.plot(val_iter, learner.recorder.val_losses[-last:], label='Validation')
-    plt.legend()
+    # Create a new figure
+    fig, ax = plt.subplots(figsize=(10, 6))
+
+    # Use fastai's built-in plot_loss method which works with modern fastai
+    learner.recorder.plot_loss(skip_start=0, with_valid=True, ax=ax)
 
     plt.savefig(str(path/(filename+'.png')))
-    plt.savefig(str(path/(filename+'.png')))
+    plt.close(fig)
     plt.switch_backend(backend_old)
 
 class fastai_model(ClassificationModel):
@@ -329,10 +324,11 @@ class fastai_model(ClassificationModel):
         finally:
             torch.load = original_torch_load
 
-        preds,targs=learn.get_preds()
+        # Use dl=1 to get predictions on validation set
+        preds,targs=learn.get_preds(dl=learn.dls.valid)
         preds=to_np(preds)
 
-        idmap=learn.data.valid_ds.get_id_mapping()
+        idmap=learn.dls.valid.dataset.get_id_mapping()
 
         return aggregate_predictions(preds,idmap=idmap,aggregate_fn = np.mean if self.aggregate_fn=="mean" else np.amax)
 
@@ -478,22 +474,25 @@ class fastai_model(ClassificationModel):
             print("Model not found.")
             assert(True)
 
-        learn = Learner(db,model, loss_func=loss, metrics=metrics,wd=self.wd,path=self.outputfolder)
+        # Build list of callbacks
+        cbs = []
 
         if(self.name.startswith("fastai_lstm") or self.name.startswith("fastai_gru")):
-            learn.callback_fns.append(partial(GradientClipping, clip=0.25))
+            cbs.append(GradientClipping(max_norm=0.25))
 
         if(self.early_stopping is not None):
             #supported options: valid_loss, macro_auc, fmax
             if(self.early_stopping == "macro_auc" and self.loss != "mse" and self.loss !="nll_regression"):
                 metric = metric_func(auc_metric, self.early_stopping, one_hot_encode_target=False, argmax_pred=False, softmax_pred=False, sigmoid_pred=True, flatten_target=False)
-                learn.metrics.append(metric)
-                learn.callback_fns.append(partial(SaveModelCallback, monitor=self.early_stopping, every='improvement', name=self.name))
+                metrics.append(metric)
+                cbs.append(SaveModelCallback(monitor=self.early_stopping, comp=np.greater, fname=self.name))
             elif(self.early_stopping == "fmax" and self.loss != "mse" and self.loss !="nll_regression"):
                 metric = metric_func(fmax_metric, self.early_stopping, one_hot_encode_target=False, argmax_pred=False, softmax_pred=False, sigmoid_pred=True, flatten_target=False)
-                learn.metrics.append(metric)
-                learn.callback_fns.append(partial(SaveModelCallback, monitor=self.early_stopping, every='improvement', name=self.name))
+                metrics.append(metric)
+                cbs.append(SaveModelCallback(monitor=self.early_stopping, comp=np.greater, fname=self.name))
             elif(self.early_stopping == "valid_loss"):
-                learn.callback_fns.append(partial(SaveModelCallback, monitor=self.early_stopping, every='improvement', name=self.name))
+                cbs.append(SaveModelCallback(monitor=self.early_stopping, comp=np.less, fname=self.name))
+
+        learn = Learner(db,model, loss_func=loss, metrics=metrics, cbs=cbs, wd=self.wd, path=self.outputfolder)
 
         return learn

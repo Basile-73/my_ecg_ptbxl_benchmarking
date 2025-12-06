@@ -244,11 +244,11 @@ def create_stage2_dataloaders(clean_train, clean_val, clean_test,
 class DenoisingModelWrapper(nn.Module):
     """Wrapper to adapt models for different signal lengths."""
 
-    def __init__(self, base_model: nn.Module, input_length: int = 5000):
+    def __init__(self, base_model: nn.Module, input_length: int = 5000, target_length: int = 3600):
         super().__init__()
         self.base_model = base_model
         self.input_length = input_length
-        self.target_length = 3600
+        self.target_length = target_length
 
     def forward(self, x):
         batch_size = x.shape[0]
@@ -268,6 +268,114 @@ class DenoisingModelWrapper(nn.Module):
         return output
 
 
+class MECGEResamplingWrapper(nn.Module):
+    """Wrapper for MECGE models that resamples signals to a target sampling rate.
+
+    This wrapper handles resampling ECG signals before and after MECGE processing.
+    It properly handles MECGE's dual interface: forward(clean, noisy) for training
+    and denoising(noisy) for inference.
+    """
+
+    def __init__(self, base_model: nn.Module, input_length: int = 5000,
+                 original_sampling_rate: int = 500, target_sampling_rate: int = 250):
+        super().__init__()
+        self.base_model = base_model
+        self.input_length = input_length
+        self.original_sampling_rate = original_sampling_rate
+        self.target_sampling_rate = target_sampling_rate
+
+        # Calculate target length and ensure it's compatible with MECGE's STFT hop_size (8)
+        # ISTFT output length can differ from input when length is not divisible by hop_size
+        # Round down to nearest multiple of hop_size to avoid length mismatch in loss computation
+        raw_target_length = int(input_length * target_sampling_rate / original_sampling_rate)
+        hop_size = 8  # MECGE's hop_size parameter
+        self.target_length = (raw_target_length // hop_size) * hop_size
+
+    def forward(self, noisy, clean=None):
+        """
+        Forward pass with resampling.
+
+        Args:
+            noisy: Noisy input tensor
+            clean: Clean reference tensor (required for training, None for inference)
+
+        Returns:
+            During training: loss value from MECGE.forward(clean, noisy)
+            During inference: denoised signal from MECGE.denoising(noisy)
+        """
+        # Training mode: MECGE.forward expects (clean, noisy) and returns loss
+        if clean is not None:
+            # Resample both clean and noisy to target sampling rate
+            clean_resampled = self._resample_to_target(clean)
+            noisy_resampled = self._resample_to_target(noisy)
+            print(f'clean_resampled:{clean_resampled.shape}')
+            print(f'noisy_resampled:{noisy_resampled.shape}')
+
+            # Call MECGE's forward method (returns loss, no resampling needed for output)
+            return self.base_model.forward(clean_resampled, noisy_resampled)
+
+        # Inference mode: MECGE.denoising expects (noisy) and returns denoised signal
+        else:
+            noisy_resampled = self._resample_to_target(noisy)
+            output = self.base_model.denoising(noisy_resampled)
+            output_resampled = self._resample_to_original(output)
+            return output_resampled
+
+    def _resample_to_target(self, x):
+        """Resample signal from original to target sampling rate."""
+        if self.input_length == self.target_length:
+            return x
+
+        original_shape = x.shape
+        is_4d = len(original_shape) == 4
+
+        # Handle both 3D (batch, 1, time) and 4D (batch, 1, 1, time) formats
+        if is_4d:
+            x = x.squeeze(2)
+
+        # Resample
+        x = torch.nn.functional.interpolate(
+            x, size=self.target_length, mode='linear', align_corners=False
+        )
+
+        # Restore 4D format if needed
+        if is_4d:
+            x = x.unsqueeze(2)
+
+        return x
+
+    def _resample_to_original(self, x):
+        """Resample signal from target back to original sampling rate."""
+        if self.input_length == self.target_length:
+            return x
+
+        original_shape = x.shape
+        is_4d = len(original_shape) == 4
+
+        # Handle both 3D and 4D formats
+        if is_4d:
+            x = x.squeeze(2)
+
+        # Resample back
+        x = torch.nn.functional.interpolate(
+            x, size=self.input_length, mode='linear', align_corners=False
+        )
+
+        # Restore 4D format if needed
+        if is_4d:
+            x = x.unsqueeze(2)
+
+        return x
+
+    @torch.no_grad()
+    def denoising(self, noisy):
+        """
+        Inference-only method for denoising.
+        This method exists to make the wrapper detectable as a MECGE model.
+        """
+        return self.forward(noisy, clean=None)
+
+
 def get_model(model_type: str, input_length: int = 5000,
               pretrained_path: Optional[str] = None, is_stage2: bool = False) -> nn.Module:
     """Get model by name."""
@@ -278,6 +386,14 @@ def get_model(model_type: str, input_length: int = 5000,
     # Add my_MECG-E folder to path (it's in denoising_models/my_MECG-E)
     mecge_path = os.path.join(os.path.dirname(__file__), '../denoising_models/my_MECG-E')
     sys.path.insert(0, mecge_path)
+
+    # Add MECGE models directory to path to avoid collision with classification 'models' package
+    mecge_root = os.path.join(os.path.dirname(__file__), '../denoising_models/my_MECG-E')
+    mecge_models_path = os.path.join(mecge_root, 'models')
+    if mecge_root not in sys.path:
+        sys.path.insert(0, mecge_root)
+    if mecge_models_path not in sys.path:
+        sys.path.insert(0, mecge_models_path)
 
     # Add mamba_stft_unet folder to path (it's in denoising_models/mamba_stft_unet)
     mamba_stft_unet_path = os.path.join(os.path.dirname(__file__), '../denoising_models/mamba_stft_unet')
@@ -293,17 +409,17 @@ def get_model(model_type: str, input_length: int = 5000,
         from Stage1_IMUnet import IMUnet
         base_model = IMUnet(in_channels=1)
         model = DenoisingModelWrapper(base_model, input_length)
-    elif model_type == 'imunet_varlen':
-        # Variable-length IMUnet with native variable-length support (no wrapper needed)
-        # This model dynamically calculates upsample sizes based on input_length,
-        # eliminating the need for interpolation and improving efficiency.
-        from Stage1_IMUnet_varlen import IMUnet
-        model = IMUnet(in_channels=1, input_length=input_length)
-        # No DenoisingModelWrapper needed - model handles variable lengths natively
-        print(f"  Model: imunet_varlen with native variable-length support (input_length={input_length})")
-        n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-        print(f"  Parameters: {n_params:,}")
-    elif model_type == 'imunet_mamba_varlen':
+    # elif model_type == 'imunet_varlen':
+    #     # Variable-length IMUnet with native variable-length support (no wrapper needed)
+    #     # This model dynamically calculates upsample sizes based on input_length,
+    #     # eliminating the need for interpolation and improving efficiency.
+    #     from Stage1_IMUnet_varlen import IMUnet
+    #     model = IMUnet(in_channels=1, input_length=input_length)
+    #     # No DenoisingModelWrapper needed - model handles variable lengths natively
+    #     print(f"  Model: imunet_varlen with native variable-length support (input_length={input_length})")
+    #     n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    #     print(f"  Parameters: {n_params:,}")
+    elif model_type == 'imunet_mamba_varlen': #bottleneck #! Mamba Bottleneck
         # Stage1_2 IMUnet with Mamba-enhanced bottleneck and native variable-length support
         # Uses MambaMerge for context fusion instead of simple 1x1 convolution
         # No interpolation wrapper needed - model handles variable lengths natively
@@ -318,13 +434,95 @@ def get_model(model_type: str, input_length: int = 5000,
                 "Stage1_2_IMUnet_mamba_merge_bn_big_varlen requires mamba-ssm. "
                 "Install with: pip install mamba-ssm"
             ) from e
-    elif model_type == 'imunet_mamba_varlen_upconv':
-        from Stage1_2_IMUnet_mamba_merge_bn_big_varlen_upconv import IMUnet
-        model = IMUnet(in_channels=1, input_length=input_length)
-        # No DenoisingModelWrapper needed - model handles variable lengths natively
-        n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-        print(f"  Loaded IMUnet_Mamba_varlen_upconv with {n_params:,} parameters for input_length={input_length}")
-    elif model_type == 'imunet_early_mamba_varlen':
+    elif model_type == 'imunet_mamba_varlen_resampled': #bottleneck #! Mamba Bottleneck Resampled
+        # Stage1_2 IMUnet with Mamba-enhanced bottleneck and native variable-length support
+        # Uses MambaMerge for context fusion instead of simple 1x1 convolution
+        # No interpolation wrapper needed - model handles variable lengths natively
+        try:
+            from Stage1_2_IMUnet_mamba_merge_bn_big_varlen import IMUnet
+            base_model = IMUnet(in_channels=1, input_length=3600)
+            model = DenoisingModelWrapper(base_model, input_length=input_length)
+            # No DenoisingModelWrapper needed - model handles variable lengths natively
+            n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+            print(f"  Loaded IMUnet_Mamba_varlen with {n_params:,} parameters for resampled input_length={3600}")
+        except ImportError as e:
+            raise ImportError(
+                "Stage1_2_IMUnet_mamba_merge_bn_big_varlen requires mamba-ssm. "
+                "Install with: pip install mamba-ssm"
+            ) from e
+    elif model_type == 'imunet_mamba_up_varlen': #! Mamba Up
+        # Stage1_3 IMUnet with Mamba-enhanced skip fusion at decoder stage 2 and native variable-length support
+        # Uses MambaSkipFusion to model long temporal interactions in skip connections
+        # at a higher resolution (L/5) for enhanced context integration
+        # No interpolation wrapper needed - model handles variable lengths natively
+        try:
+            from Stage1_3_IMUnet_mamba_merge_up_big_varlen import IMUnet
+            model = IMUnet(in_channels=1, input_length=input_length)
+            # No DenoisingModelWrapper needed - model handles variable lengths natively
+            n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+            print(f"  Loaded IMUnet_Mamba_up_varlen with {n_params:,} parameters for input_length={input_length}")
+        except ImportError as e:
+            raise ImportError(
+                "Stage1_3_IMUnet_mamba_merge_up_big_varlen requires mamba-ssm. "
+                "Install with: pip install mamba-ssm"
+            ) from e
+    elif model_type == 'imunet_mamba_up_varlen_resampled': #! Mamba Up Resampled
+        # Stage1_3 IMUnet with Mamba-enhanced skip fusion at decoder stage 2 and native variable-length support
+        # Uses MambaSkipFusion to model long temporal interactions in skip connections
+        # at a higher resolution (L/5) for enhanced context integration
+        # No interpolation wrapper needed - model handles variable lengths natively
+        try:
+            from Stage1_3_IMUnet_mamba_merge_up_big_varlen import IMUnet
+            base_model = IMUnet(in_channels=1, input_length=input_length)
+            model = DenoisingModelWrapper(base_model, input_length=input_length)
+            # No DenoisingModelWrapper needed - model handles variable lengths natively
+            n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+            print(f"  Loaded IMUnet_Mamba_up_varlen with {n_params:,} parameters for resampled input_length={3600}")
+        except ImportError as e:
+            raise ImportError(
+                "Stage1_3_IMUnet_mamba_merge_up_big_varlen requires mamba-ssm. "
+                "Install with: pip install mamba-ssm"
+            ) from e
+    elif model_type == 'imunet_mamba_late_varlen': #! Mamba Late
+        # Stage1_5 IMUnet with Mamba-based late refinement before final output and native variable-length support
+        # Uses MambaLateRefinement for global temporal smoothing on reconstructed sequences
+        # at full resolution (L) before producing the final denoised output
+        # No interpolation wrapper needed - model handles variable lengths natively
+        try:
+            from Stage1_5_IMUnet_mamba_merge_late_big_varlen import IMUnet
+            model = IMUnet(in_channels=1, input_length=input_length)
+            # No DenoisingModelWrapper needed - model handles variable lengths natively
+            n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+            print(f"  Loaded IMUnet_Mamba_late_varlen with {n_params:,} parameters for input_length={input_length}")
+        except ImportError as e:
+            raise ImportError(
+                "Stage1_5_IMUnet_mamba_merge_late_big_varlen requires mamba-ssm. "
+                "Install with: pip install mamba-ssm"
+            ) from e
+    elif model_type == 'imunet_mamba_late_varlen_resampled': #! Mamba Late Resampled
+        # Stage1_5 IMUnet with Mamba-based late refinement before final output and native variable-length support
+        # Uses MambaLateRefinement for global temporal smoothing on reconstructed sequences
+        # at full resolution (L) before producing the final denoised output
+        # No interpolation wrapper needed - model handles variable lengths natively
+        try:
+            from Stage1_5_IMUnet_mamba_merge_late_big_varlen import IMUnet
+            base_model = IMUnet(in_channels=1, input_length=input_length)
+            model = DenoisingModelWrapper(base_model, input_length=input_length)
+            # No DenoisingModelWrapper needed - model handles variable lengths natively
+            n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+            print(f"  Loaded IMUnet_Mamba_late_varlen with {n_params:,} parameters for resampled input_length={3600}")
+        except ImportError as e:
+            raise ImportError(
+                "Stage1_5_IMUnet_mamba_merge_late_big_varlen requires mamba-ssm. "
+                "Install with: pip install mamba-ssm"
+            ) from e
+    # elif model_type == 'imunet_mamba_varlen_upconv':
+    #     from Stage1_2_IMUnet_mamba_merge_bn_big_varlen_upconv import IMUnet
+    #     model = IMUnet(in_channels=1, input_length=input_length)
+    #     # No DenoisingModelWrapper needed - model handles variable lengths natively
+    #     n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    #     print(f"  Loaded IMUnet_Mamba_varlen_upconv with {n_params:,} parameters for input_length={input_length}")
+    elif model_type == 'imunet_early_mamba_varlen': # !Mamba Early
         # Stage1_4 IMUnet with early-stage Mamba and native variable-length support
         # Uses MambaEarlyLayer in first encoder block to capture global temporal dependencies
         # in raw signals before downsampling. Processes full-length sequences (e.g., 3600 samples)
@@ -336,6 +534,24 @@ def get_model(model_type: str, input_length: int = 5000,
             # No DenoisingModelWrapper needed - model handles variable lengths natively
             n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
             print(f"  Loaded IMUnet_EarlyMamba_varlen with {n_params:,} parameters for input_length={input_length}")
+        except ImportError as e:
+            raise ImportError(
+                "Stage1_4_IMUnet_mamba_merge_early_big_varlen requires mamba-ssm and einops. "
+                "Install with: pip install mamba-ssm einops"
+            ) from e
+    elif model_type == 'imunet_early_mamba_varlen_resampled': # !Mamba Early Resampled
+        # Stage1_4 IMUnet with early-stage Mamba and native variable-length support
+        # Uses MambaEarlyLayer in first encoder block to capture global temporal dependencies
+        # in raw signals before downsampling. Processes full-length sequences (e.g., 3600 samples)
+        # at the earliest stage, unlike Stage1_2 which uses Mamba in the compressed bottleneck.
+        # No interpolation wrapper needed - model handles variable lengths natively.
+        try:
+            from Stage1_4_IMUnet_mamba_merge_early_big_varlen import IMUnet
+            base_model = IMUnet(in_channels=1, input_length=3600)
+            model = DenoisingModelWrapper(base_model, input_length=input_length)
+            # No DenoisingModelWrapper needed - model handles variable lengths natively
+            n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+            print(f"  Loaded IMUnet_EarlyMamba_varlen with {n_params:,} parameters for resampled input_length={3600}")
         except ImportError as e:
             raise ImportError(
                 "Stage1_4_IMUnet_mamba_merge_early_big_varlen requires mamba-ssm and einops. "
@@ -406,14 +622,14 @@ def get_model(model_type: str, input_length: int = 5000,
         IMUnet = module.IMUnet
         base_model = IMUnet(in_channels=1)
         model = DenoisingModelWrapper(base_model, input_length)
-    elif model_type == 'mamba_stft_unet':
-        from model import TinyMambaSTFTUNet
-        base_model = TinyMambaSTFTUNet()
-        model = DenoisingModelWrapper(base_model, input_length)
-    elif model_type == 'mamba_stft_unet_v2':
-        from model_v2 import TinyMambaSTFTUNetV2
-        base_model = TinyMambaSTFTUNetV2()
-        model = DenoisingModelWrapper(base_model, input_length)
+    # elif model_type == 'mamba_stft_unet':
+    #     from model import TinyMambaSTFTUNet
+    #     base_model = TinyMambaSTFTUNet()
+    #     model = DenoisingModelWrapper(base_model, input_length)
+    # elif model_type == 'mamba_stft_unet_v2':
+    #     from model_v2 import TinyMambaSTFTUNetV2
+    #     base_model = TinyMambaSTFTUNetV2()
+    #     model = DenoisingModelWrapper(base_model, input_length)
     elif model_type == 'stage2' or model_type == 'drnet':
         from Stage2_model3 import DRnet
         base_model = DRnet(in_channels=2)  # 2 channels: noisy + stage1 output
@@ -423,22 +639,27 @@ def get_model(model_type: str, input_length: int = 5000,
         config_path = os.path.join(os.path.dirname(__file__), '../denoising_models/my_MECG-E/config/MECGE_phase.yaml')
         with open(config_path, 'r') as f:
             config = yaml.safe_load(f)
-        from models.MECGE import MECGE
+        from MECGE import MECGE
         model = MECGE(config)
-
-        if pretrained_path and os.path.exists(pretrained_path):
-            model.load_state_dict(torch.load(pretrained_path, weights_only=True))
-
-        n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-        print(f"Loaded {model_type} with {n_params:,} parameters")
-
-        return model
+    elif model_type == 'mecge_phase_250':
+        # Load MECGE with phase feature configuration and 250 Hz resampling
+        config_path = os.path.join(os.path.dirname(__file__), '../denoising_models/my_MECG-E/config/MECGE_phase.yaml')
+        with open(config_path, 'r') as f:
+            config = yaml.safe_load(f)
+        from MECGE import MECGE
+        base_model = MECGE(config)
+        model = MECGEResamplingWrapper(
+            base_model=base_model,
+            input_length=input_length,
+            original_sampling_rate=input_length/10, # 10 second records
+            target_sampling_rate=250
+        )
     elif model_type == 'mecge_complex':
         # Load MECGE with complex feature configuration
         config_path = os.path.join(os.path.dirname(__file__), '../denoising_models/my_MECG-E/config/MECGE_complex.yaml')
         with open(config_path, 'r') as f:
             config = yaml.safe_load(f)
-        from models.MECGE import MECGE
+        from MECGE import MECGE
         model = MECGE(config)
 
         if pretrained_path and os.path.exists(pretrained_path):
@@ -453,7 +674,7 @@ def get_model(model_type: str, input_length: int = 5000,
         config_path = os.path.join(os.path.dirname(__file__), '../denoising_models/my_MECG-E/config/MECGE_wav.yaml')
         with open(config_path, 'r') as f:
             config = yaml.safe_load(f)
-        from models.MECGE import MECGE
+        from MECGE import MECGE
         model = MECGE(config)
 
         if pretrained_path and os.path.exists(pretrained_path):
@@ -477,7 +698,7 @@ def get_model(model_type: str, input_length: int = 5000,
             config = yaml.safe_load(f)
 
         try:
-            from models.MECGE_varlen import MECGE
+            from MECGE_varlen import MECGE
             model = MECGE(config)
 
             if pretrained_path and os.path.exists(pretrained_path):
@@ -503,7 +724,7 @@ def get_model(model_type: str, input_length: int = 5000,
             config = yaml.safe_load(f)
 
         try:
-            from models.MECGE_varlen import MECGE
+            from MECGE_varlen import MECGE
             model = MECGE(config)
 
             if pretrained_path and os.path.exists(pretrained_path):
@@ -529,7 +750,7 @@ def get_model(model_type: str, input_length: int = 5000,
             config = yaml.safe_load(f)
 
         try:
-            from models.MECGE_varlen import MECGE
+            from MECGE_varlen import MECGE
             model = MECGE(config)
 
             if pretrained_path and os.path.exists(pretrained_path):

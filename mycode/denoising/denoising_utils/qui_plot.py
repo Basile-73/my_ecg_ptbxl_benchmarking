@@ -18,6 +18,27 @@ from .utils import get_model, run_denoise_inference
 from ecg_noise_factory.noise import NoiseFactory
 
 
+# Shared color mapping for models (Stage1 = light, Stage2 = dark)
+# This color map is used across multiple visualization scripts for consistency
+MODEL_COLOR_MAP = {
+    'noisy_input': '#808080',  # Grey (baseline)
+    'fcn': '#aec7e8',         # Light blue (Stage1)
+    'drnet_fcn': '#1f77b4',   # Dark blue (Stage2)
+    'unet': '#ff9896',        # Light red (Stage1)
+    'drnet_unet': '#d62728',  # Dark red (Stage2)
+    'imunet': '#98df8a',      # Light green (Stage1)
+    'drnet_imunet': '#2ca02c', # Dark green (Stage2)
+    'imunet_origin': '#9467bd',    # Purple
+    'mecge_phase': '#C91CB5',
+    'mecge_phase_250': '#c91cc9',
+    'imunet_mamba_bn': '#ff7f0e',  # Orange
+    'imunet_mamba_bottleneck': '#1C8AC9',  # Cyan-blue
+    'imunet_mamba_up': '#17becf',  # Cyan/Teal
+    'imunet_mamba_early': '#391CC9', # Purple-blue
+    'imunet_mamba_late': '#bcbd22',  # Yellow-green
+}
+
+
 def calculate_snr(clean, noisy):
     """Calculate Signal-to-Noise Ratio in dB."""
     signal_power = np.sum(clean ** 2)
@@ -90,23 +111,13 @@ def qui_plot(noise_configs, exp_folder, config, clean_test, models, n_bootstrap_
         exp_folder: Experiment folder path
         config: Main config dictionary
         clean_test: Clean test signals
-        models: List of model names to evaluate
+        models: List of model names to evaluate. If duplicate names appear, they will be
+                deduplicated automatically. Models are ordered according to their position
+                in the color_map dictionary, with any unlisted models appended at the end.
         n_bootstrap_samples: Number of bootstrap samples for confidence intervals (default: 100)
     """
-    # Color mapping for models (Stage1 = light, Stage2 = dark)
-    color_map = {
-        'fcn': '#aec7e8',         # Light blue (Stage1)
-        'drnet_fcn': '#1f77b4',   # Dark blue (Stage2)
-        'unet': '#ff9896',        # Light red (Stage1)
-        'drnet_unet': '#d62728',  # Dark red (Stage2)
-        'imunet': '#98df8a',      # Light green (Stage1)
-        'drnet_imunet': '#2ca02c', # Dark green (Stage2)
-        'imunet_origin': '#9467bd',    # Purple
-        'imunet_mamba_bn': '#ff7f0e',  # Orange
-        'imunet_mamba_up': '#17becf',  # Cyan/Teal
-        'imunet_mamba_early': '#e377c2', # Magenta/Pink
-        'imunet_mamba_late': '#bcbd22'  # Yellow-green
-    }
+    # Use shared color mapping for consistency across all visualizations
+    color_map = MODEL_COLOR_MAP
 
     # Setup device
     device = torch.device('cuda' if torch.cuda.is_available() and
@@ -145,6 +156,26 @@ def qui_plot(noise_configs, exp_folder, config, clean_test, models, n_bootstrap_
         noisy_test = noise_factory.add_noise(
             x=clean_test, batch_axis=0, channel_axis=2, length_axis=1
         )
+
+        # Compute noisy signal metrics (baseline)
+        print(f"  Computing noisy signal baseline metrics...")
+        for i in range(len(clean_test)):
+            clean = clean_test[i].squeeze()
+            noisy = noisy_test[i].squeeze()
+
+            # Calculate SNR and RMSE for noisy signal
+            input_snr = calculate_snr(clean, noisy)
+            rmse_noisy = calculate_rmse(clean, noisy)
+
+            all_results.append({
+                'noise_config': config_name,
+                'model': 'noisy_input',
+                'sample_idx': i,
+                'snr_improvement_db': 0.0,  # No improvement for baseline
+                'rmse_denoised': rmse_noisy,  # Use rmse_noisy as rmse_denoised for consistency
+                'input_snr_db': input_snr,
+                'output_snr_db': input_snr  # Output equals input for noisy signal
+            })
 
         # Evaluate each model
         for model_name in tqdm(models, desc=f"  Evaluating models ({config_name})", position=1, leave=False):
@@ -312,6 +343,52 @@ def qui_plot(noise_configs, exp_folder, config, clean_test, models, n_bootstrap_
         config_name = noise_config['name']
         config_df = results_df[results_df['noise_config'] == config_name]
 
+        # First, compute metrics for noisy_input baseline
+        noisy_df = config_df[config_df['model'] == 'noisy_input']
+        if not noisy_df.empty:
+            # Create simple array for bootstrap sampling
+            y_dummy = np.ones((len(noisy_df), 1))
+            bootstrap_samples = get_appropriate_bootstrap_samples(y_dummy, n_bootstrap_samples)
+
+            # Compute metrics for each bootstrap sample
+            bootstrap_results = []
+            for sample_indices in bootstrap_samples:
+                metrics = compute_bootstrap_metrics(
+                    sample_indices,
+                    noisy_df.reset_index(drop=True),
+                    metrics=['rmse_denoised', 'input_snr_db']  # Use input_snr_db for noisy signal
+                )
+                bootstrap_results.append(metrics)
+
+            # Convert to DataFrame for easy quantile computation
+            bootstrap_df = pd.DataFrame(bootstrap_results)
+
+            # Point estimate (using all data)
+            point_rmse = noisy_df['rmse_denoised'].mean()
+            point_snr = noisy_df['input_snr_db'].mean()
+
+            # Bootstrap mean and quantiles
+            mean_rmse = bootstrap_df['rmse_denoised'].mean()
+            lower_rmse = bootstrap_df['rmse_denoised'].quantile(0.05)
+            upper_rmse = bootstrap_df['rmse_denoised'].quantile(0.95)
+
+            mean_snr = bootstrap_df['input_snr_db'].mean()
+            lower_snr = bootstrap_df['input_snr_db'].quantile(0.05)
+            upper_snr = bootstrap_df['input_snr_db'].quantile(0.95)
+
+            summary_stats.append({
+                'noise_config': config_name,
+                'model': 'noisy_input',
+                'point_rmse': point_rmse,
+                'mean_rmse': mean_rmse,
+                'lower_rmse': lower_rmse,
+                'upper_rmse': upper_rmse,
+                'point_output_snr': point_snr,  # For noisy signal, output = input
+                'mean_output_snr': mean_snr,
+                'lower_output_snr': lower_snr,
+                'upper_output_snr': upper_snr
+            })
+
         for model_name in models:
             model_df = config_df[config_df['model'] == model_name]
 
@@ -362,23 +439,27 @@ def qui_plot(noise_configs, exp_folder, config, clean_test, models, n_bootstrap_
     summary_df = pd.DataFrame(summary_stats)
 
     # Create figure - Grouped by NOISE CONFIG first
-    fig, axes = plt.subplots(1, 2, figsize=(16, 6))
+    fig, axes = plt.subplots(1, 2, figsize=(len(noise_configs)*4, 6))
     fig.suptitle('Model Performance Across Noise Configurations',
                 fontsize=16, fontweight='bold', y=0.98)
 
-    # Group models by base (fcn, unet, imunet) and sort
-    def get_model_order(model_name):
-        """Return (base_name, is_stage2) for sorting"""
-        if 'drnet_' in model_name:
-            base = model_name.replace('drnet_', '')
-            return (base, 1)  # Stage2 comes after Stage1
-        else:
-            return (model_name, 0)
+    # Order models according to their position in color_map
+    # Note: This automatically deduplicates any repeated model names in the input list.
+    # Duplicate model names are not expected in normal usage (they would indicate a
+    # configuration error), so deduplication improves plot clarity.
+    colormap_order = list(color_map.keys())
+    # Filter to include only models that are in the models parameter (excluding noisy_input)
+    ordered_models = [m for m in colormap_order if m in models and m != 'noisy_input']
+    # Find any models not in the colormap
+    unlisted_models = [m for m in models if m not in color_map]
+    # Combine them: colormap order first, then unlisted
+    sorted_models = ordered_models + unlisted_models
 
-    sorted_models = sorted(models, key=get_model_order)
+    # Prepend noisy_input as the first bar in each group
+    models_with_noisy = ['noisy_input'] + sorted_models
 
     # Setup for grouped bar chart
-    n_models = len(sorted_models)
+    n_models = len(models_with_noisy)  # Include noisy_input in count
     n_configs = len(noise_configs)
     group_width = 0.8
     bar_width = group_width / n_models
@@ -396,7 +477,7 @@ def qui_plot(noise_configs, exp_folder, config, clean_test, models, n_bootstrap_
         config_name = noise_config['name']
         config_df = summary_df[summary_df['noise_config'] == config_name]
 
-        for model_idx, model_name in enumerate(sorted_models):
+        for model_idx, model_name in enumerate(models_with_noisy):
             model_df = config_df[config_df['model'] == model_name]
 
             if not model_df.empty:
@@ -416,9 +497,10 @@ def qui_plot(noise_configs, exp_folder, config, clean_test, models, n_bootstrap_
                        color=color, alpha=0.8, edgecolor='black', linewidth=0.5,
                        label=model_name if config_idx == 0 else '')
 
-                # Add text label on top of bar
-                ax1.text(bar_pos, point_rmse + upper_err + 0.001, f'{point_rmse:.3f}',
+                # Add text label on top of bar with 90° rotation
+                ax1.text(bar_pos, point_rmse + upper_err + 0.01, f'{point_rmse:.3f}',
                         ha='center', va='bottom', fontsize=8, color='black',
+                        rotation=90,
                         bbox=dict(boxstyle='round,pad=0.3', facecolor='white',
                                  edgecolor='none', alpha=0.7))
 
@@ -437,8 +519,10 @@ def qui_plot(noise_configs, exp_folder, config, clean_test, models, n_bootstrap_
     ax1.set_xticks(config_positions)
     ax1.set_xticklabels(config_labels, fontsize=11)
     ax1.grid(True, alpha=0.3, axis='y')
+    # Ensure positive values for log scale
+    min_rmse_y = max(min_rmse_y, 1e-6)
     ax1.set_ylim(bottom=min_rmse_y * 0.95, top=max_rmse_y * 1.15)
-    ax1.legend(loc='lower right', fontsize=9)
+    ax1.set_yscale('log')
 
     # Plot 2: Output SNR (changed from SNR Improvement)
     ax2 = axes[1]
@@ -450,7 +534,7 @@ def qui_plot(noise_configs, exp_folder, config, clean_test, models, n_bootstrap_
         config_name = noise_config['name']
         config_df = summary_df[summary_df['noise_config'] == config_name]
 
-        for model_idx, model_name in enumerate(sorted_models):
+        for model_idx, model_name in enumerate(models_with_noisy):
             model_df = config_df[config_df['model'] == model_name]
 
             if not model_df.empty:
@@ -470,9 +554,10 @@ def qui_plot(noise_configs, exp_folder, config, clean_test, models, n_bootstrap_
                        color=color, alpha=0.8, edgecolor='black', linewidth=0.5,
                        label=model_name if config_idx == 0 else '')
 
-                # Add text label on top of bar
-                ax2.text(bar_pos, point_snr + upper_err, f'{point_snr:.2f}',
+                # Add text label on top of bar with 90° rotation
+                ax2.text(bar_pos, point_snr + upper_err + 0.5, f'{point_snr:.2f}',
                         ha='center', va='bottom', fontsize=8, color='black',
+                        rotation=90,
                         bbox=dict(boxstyle='round,pad=0.3', facecolor='white',
                                  edgecolor='none', alpha=0.7))
 
@@ -489,9 +574,9 @@ def qui_plot(noise_configs, exp_folder, config, clean_test, models, n_bootstrap_
     ax2.set_xticklabels(config_labels, fontsize=11)
     ax2.grid(True, alpha=0.3, axis='y')
     ax2.set_ylim(bottom=min_snr_y * 0.95, top=max_snr_y * 1.15)
-    ax2.legend(loc='lower right', fontsize=9)
+    ax2.legend(loc='center left', bbox_to_anchor=(1.02, 0.5), fontsize=9)
 
-    plt.tight_layout()
+    plt.tight_layout(rect=[0, 0, 0.95, 1])
 
     # Save
     plot_path = os.path.join(exp_folder, 'results', 'qui_plot_comparison.png')
