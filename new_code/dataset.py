@@ -8,6 +8,7 @@ import os
 import torch
 from utils import get_sampleset_name
 from utils import bandpass_filter
+import time
 
 
 class SyntheticEcgDataset(Dataset):
@@ -20,6 +21,7 @@ class SyntheticEcgDataset(Dataset):
         iqr: Optional[float] = None,
         save_clean_samples: bool = False,
     ):
+        np.random.seed(42)
         assert simulation_params["sampling_rate"] == noise_factory.sampling_rate
         assert not (
             noise_factory.mode != "train" and (median is None or iqr is None)
@@ -75,22 +77,43 @@ class SyntheticEcgDataset(Dataset):
         filtered = bandpass_filter(np.array(ecg_list), self.simulation_params["sampling_rate"])
         return filtered
 
-    def _generate_single_sample(self, i):
-        mode = self.noise_factory.mode
+    def _get_effective_params_and_cutoff(self, i):
+        effective_simulation_params = self.simulation_params.copy()
+        for k in ["means_ai", "stds_ai", "means_bi", "stds_bi"]:
+            effective_simulation_params.pop(k, None)
+
+        hr_interval = self.simulation_params["heart_rate"]
+        effective_simulation_params["heart_rate"] = np.random.randint(low=hr_interval[0], high=hr_interval[1])
+
+        means_ai = np.array(self.simulation_params["means_ai"])
+        stds_ai = np.array(self.simulation_params["stds_ai"])
+        effective_ai = np.random.uniform(means_ai-stds_ai, means_ai+stds_ai)
+        effective_simulation_params["ai"] = effective_ai
+
+        means_bi = np.array(self.simulation_params["means_bi"])
+        stds_bi = np.array(self.simulation_params["stds_bi"])
+        effective_bi = np.random.uniform(means_bi-stds_bi, means_bi+stds_bi)
+        effective_simulation_params["bi"] = effective_bi
+
         base = {"train": 0, "test": 1_000_000, "eval": 2_000_000}.get(self.noise_factory.mode, 0)
-        seed = base + i
+        effective_seed = base + i
+        effective_simulation_params["random_state"] = effective_seed
 
         cutoff_duration = 5
         cutoff = self.simulation_params["sampling_rate"] * cutoff_duration
+        effective_duration = self.simulation_params["duration"] + cutoff_duration
+        effective_simulation_params["duration"] = effective_duration
+        return effective_simulation_params, cutoff
 
-        effective_simulation_params = self.simulation_params.copy()
-        effective_simulation_params['duration'] += cutoff_duration
-        effective_simulation_params['random_state'] = seed
-
-        ecg = nk.ecg_simulate(**effective_simulation_params, noise = 0)
-        ecg = ecg[cutoff:]
-        return ecg
-
+    def _generate_single_sample(self, i):
+        effective_simulation_params, cutoff = self._get_effective_params_and_cutoff(i)
+        for _ in range(1000):
+            try:
+                ecg = nk.ecg_simulate(**effective_simulation_params, noise = 0)
+                return ecg[cutoff:]
+            except Exception:
+                time.sleep(0.001)
+        raise RuntimeError("Failed to generate ECG after 1000 retries")
 
     def _add_noise_to_single_record(self, clean):
         clean_3d = clean.reshape(1, 1, -1)
@@ -104,13 +127,18 @@ class SyntheticEcgDataset(Dataset):
         self.iqr = np.percentile(vals, 75) - np.percentile(vals, 25)
 
 
+
 # # Example Usage
 # sim_params = {
 #     "duration": 10,
 #     "sampling_rate": 360,
-#     "heart_rate": 70,
+#     "heart_rate": [60, 80],
 #     "heart_rate_std": 5,
-#     "lfhfratio": 0.001
+#     "lfhfratio": 0.001,
+#     "means_ai" : [1.2, -5, 30, -7.5, 0.75],
+#     "stds_ai" : [0.6, 0.2, 0.0, 1, 0.35],
+#     "means_bi" : [0.25, 0.1, 0.1, 0.1, 0.4],
+#     "stds_bi" : [0.1, 0.1, 0.0, 0.0, 0.0],
 # }
 
 # n_samples = 5
@@ -126,13 +154,15 @@ class SyntheticEcgDataset(Dataset):
 #     sim_params, n_samples, train_factory, save_clean_samples=False
 # )
 
-# example_i = 3
+
 
 # import matplotlib.pyplot as plt
-# clean, noisy = train_set[example_i]
-# clean_np = clean.reshape(-1)
-# t = np.arange(len(clean_np)) / train_set.simulation_params["sampling_rate"]
 
-# width = train_set.simulation_params["duration"]
-# plt.figure(figsize=(width, 3))
-# plt.plot(t, clean_np, color="green", label="ground truth")
+# for example_i in range(20):
+#     noisy, clean = train_set[example_i]
+#     clean_np = clean.reshape(-1)
+#     t = np.arange(len(clean_np)) / train_set.simulation_params["sampling_rate"]
+
+#     width = train_set.simulation_params["duration"]
+#     plt.figure(figsize=(width, 3))
+#     plt.plot(t, clean_np, color="green", label="ground truth")

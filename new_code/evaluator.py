@@ -65,9 +65,10 @@ class Evaluator:
             denoised = self.model(noisy.unsqueeze(0))
             denoised = denoised.squeeze(0)
 
-        clean = np.array(clean.reshape(-1))
-        noisy = np.array(noisy.reshape(-1).cpu())
-        denoised = np.array(denoised.reshape(-1).cpu())
+        clean = clean.reshape(-1).detach().cpu().numpy()
+        noisy = noisy.reshape(-1).detach().cpu().numpy()
+        denoised = denoised.reshape(-1).detach().cpu().numpy()
+
 
         sampling_frequency = self.simulation_params["sampling_rate"]
         t = np.arange(len(clean)) / sampling_frequency
@@ -90,7 +91,7 @@ class Evaluator:
         self.model.eval()
         for noisy, clean in self.eval_data_loader:
             noisy = noisy.to(self.device)
-            denoised = self.model(noisy).cpu().numpy().reshape(len(clean), -1)
+            denoised = self.model(noisy).detach().cpu().numpy().reshape(len(clean), -1)
             clean = clean.numpy().reshape(len(clean), -1)
 
             err = clean - denoised
@@ -103,11 +104,12 @@ class Evaluator:
         return pd.DataFrame({
             "metric": ["RMSE", "SNR"],
             "mean": [np.mean(rmses), np.mean(snrs)],
-            "ci_low": [ci_rmses[0], ci_rmses[0]],
-            "ci_high": [ci_snrs[1], ci_snrs[1]],
+            "ci_low": [ci_rmses[0], ci_snrs[0]],
+            "ci_high": [ci_rmses[1], ci_snrs[1]],
         })
 
-
-config_path = Path('configs/train_config.yaml')
-evaluator = Evaluator(config_path)
-evaluator.plot_examples(2)
+# # example usage
+# config_path = Path('configs/train_config.yaml')
+# evaluator = Evaluator(config_path)
+# evaluator.plot_examples(6)
+# evaluator.results

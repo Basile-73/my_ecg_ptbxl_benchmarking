@@ -49,13 +49,11 @@ def read_config(config_path: Path):
     training_config = config["training"]
     return model_name, simulation_params, data_volume, noise_paths, training_config
 
-def get_sampleset_name(simulation_params:dict, n_samples:int, mode:str)-> str:
-    s = "_".join(
-        f"{k}_{simulation_params[k]}" for k in sorted(simulation_params)
-    )
-    s = f"{s}_n_samples_{n_samples}"
-    s = f"{s}_mode_{mode}"
-    return s
+def get_sampleset_name(params, n, mode):
+    keys = {"means_ai","stds_ai","means_bi","stds_bi"} # keys & values to exclude from file name
+    filtered = {k:v for k,v in params.items() if k not in keys}
+    parts = [f"{k}_{filtered[k]}" for k in sorted(filtered)]
+    return "_".join(parts + [f"n_samples_{n}", f"mode_{mode}"])
 
 def bandpass_filter(data: np.ndarray, fs:int, lowcut: float = 1.0, highcut: float = 45.0,
                     order: int = 2) -> np.ndarray:
