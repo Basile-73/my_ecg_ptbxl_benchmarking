@@ -21,12 +21,12 @@ class Evaluator:
 
         self.simulation_params = simulation_params
         self.duration = simulation_params["duration"]
+        sequence_length = simulation_params["duration"] * simulation_params["sampling_rate"]
         self.model_name = model_name
-        self.model = get_model(model_name)
-        self.model
-        self.model.load_state_dict(
-            torch.load(f"model_weights/best_{self.simulation_params['duration']}s_{model_name}.pth")
-        )
+        self.model = get_model(model_name, sequence_length=sequence_length)
+        state = torch.load(f"model_weights/best_{self.simulation_params['duration']}s_{model_name}.pth", map_location=self.device)
+        self.model.load_state_dict(state)
+        self.model.to(self.device)
 
 
         self.eval_noise_factory = NoiseFactory(
@@ -114,9 +114,9 @@ class Evaluator:
         path = Path(f"outputs/results_{self.duration}s_{self.model_name}.csv")
         self.results.to_csv(path, sep=",")
 
-# example usage
-config_path = Path('configs/train_config.yaml')
-evaluator = Evaluator(config_path)
-evaluator.plot_examples(6)
-evaluator.results
-evaluator.save_results()
+# # example usage
+# config_path = Path('configs/train_config.yaml')
+# evaluator = Evaluator(config_path)
+# evaluator.plot_examples(6)
+# evaluator.results
+# evaluator.save_results()
