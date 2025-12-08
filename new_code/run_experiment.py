@@ -4,6 +4,9 @@ from pathlib import Path
 import itertools
 from trainer import SimpleTrainer
 from evaluator import Evaluator
+import numpy as np
+import pandas as pd
+from utils import nested_get
 
 
 class CombinationExperiment:
@@ -14,6 +17,7 @@ class CombinationExperiment:
         self.train_configs = self._get_configs('train_configs')
         self.configs = self._assemble_configs()
         self.config_paths = self._get_config_paths()
+        self.results_summary = None
 
     def _get_configs(self, folder: str):
         configs = []
@@ -47,17 +51,45 @@ class CombinationExperiment:
             with open(config_path, "w") as f:
                 yaml.safe_dump(config, f)
 
+    def summarize_results(self, keys: list[str]):
+        folders = [Path(f).parent for f in self.config_paths]
+        all_results = pd.DataFrame()
+
+        for folder in folders:
+            results = pd.read_csv(os.path.join(folder, "results.csv"), index_col = 0)
+            out = results.set_index('metric').stack().to_frame().T # single line, double index
+
+            with open(os.path.join(folder, "config.yaml")) as f:
+                config = yaml.safe_load(f)
+            for key in keys:
+                value = nested_get(config, key)
+                out.insert(0, key, value)
+
+            all_results= pd.concat([all_results, out])
+        return all_results.sort_values(by=keys)
+
     def run(self):
         for config, config_path in zip(self.configs, self.config_paths):
             print(F"Training model {config['model']} on sequence length {config['simulation_params']['duration']}s")
             trainer = SimpleTrainer(Path(config_path))
             trainer.train()
 
+            loss_histories = [trainer.train_loss_history, trainer.test_loss_history]
+            for loss_history, name in zip(loss_histories, ['train', 'test']):
+                arr = np.array([
+                    float(l.detach() if hasattr(l, "detach") else l)
+                    for l in loss_history
+                ]) # TODO: find out why mix of tensors and floats here
+                np.save(os.path.join(Path(config_path).parent, f'{name}.npy'), arr)
+
             print(F"Evaulating model {config['model']} on sequence length {config['simulation_params']['duration']}s")
             evaluator = Evaluator(Path(config_path))
             results = evaluator.results
-            restuls_path = os.path.join(Path(config_path).parent, 'restults.csv')
+            restuls_path = os.path.join(Path(config_path).parent, 'results.csv')
             results.to_csv(restuls_path, sep=",")
+
+        self.results_summary = self.summarize_results(keys=['model', 'simulation_params.duration'])
+        self.results_summary.to_csv(os.path.join(Path(f"outputs/{self.exp_name}"), 'summary.csv'), sep = ",")
 
 # # example usage
 # exp_name = "length_mamba"

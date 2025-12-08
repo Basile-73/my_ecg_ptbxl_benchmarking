@@ -11,6 +11,11 @@ import yaml
 import numpy as np
 from scipy.signal import butter, filtfilt
 
+def nested_get(d, path):
+    for p in path.split("."):
+        d = d[p]
+    return d
+
 
 def get_model(model_name: str, **kwargs):
     if model_name == "imunet":
