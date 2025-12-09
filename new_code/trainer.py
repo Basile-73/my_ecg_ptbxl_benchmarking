@@ -11,10 +11,26 @@ from dataset import SyntheticEcgDataset
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 import torch
+import random
+import numpy as np
+
+
+def set_seed(seed=42):
+    """Set seeds for reproducibility."""
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
 
 
 class SimpleTrainer:
-    def __init__(self, config_path: Path):
+    def __init__(self, config_path: Path, seed=42):
+        # Set seed for reproducibility
+        set_seed(seed)
+
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         model_name, simulation_params, data_volume, noise_paths, training_config = (
             read_config(config_path)
@@ -56,11 +72,20 @@ class SimpleTrainer:
         )
 
 
+        # Create worker init function for DataLoader reproducibility
+        def worker_init_fn(worker_id):
+            np.random.seed(seed + worker_id)
+            random.seed(seed + worker_id)
+
         self.train_data_loader = DataLoader(
-            self.train_dataset, training_config["batch_size"]
+            self.train_dataset,
+            training_config["batch_size"],
+            worker_init_fn=worker_init_fn
         )
         self.test_data_loader = DataLoader(
-            self.test_dataset, training_config["batch_size"]
+            self.test_dataset,
+            training_config["batch_size"],
+            worker_init_fn=worker_init_fn
         )
 
         self.model_name = model_name
