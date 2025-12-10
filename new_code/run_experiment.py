@@ -38,7 +38,7 @@ class CombinationExperiment:
     def _get_config_paths(self, output_folder: str = "outputs"):
         config_paths = []
         for config in self.configs:
-            model_name = config["model"]
+            model_name = config["model"]["name"]
             duration = config["simulation_params"]["duration"]
             folder_name = f"{output_folder}/{self.exp_name}/{duration}s_{model_name}"
             config_paths.append(os.path.join(folder_name, 'config.yaml'))
@@ -78,19 +78,19 @@ class CombinationExperiment:
         previous_weights = {}  # key: model_name, value: weights_path
 
         for config, config_path in zip(sorted_configs, sorted_config_paths):
-            print(F"Training model {config['model']} on sequence length {config['simulation_params']['duration']}s")
+            print(F"Training model {config['model']['name']} on sequence length {config['simulation_params']['duration']}s")
 
             # Determine if we should pass pre-trained weights
             pre_trained_weights_path = None
-            if reuse_weights and config['model'] in previous_weights:
-                pre_trained_weights_path = previous_weights[config['model']]
+            if reuse_weights and config['model']['name'] in previous_weights:
+                pre_trained_weights_path = previous_weights[config['model']['name']]
 
             trainer = SimpleTrainer(Path(config_path), experiment_name=self.exp_name, pre_trained_weights_path=pre_trained_weights_path)
             trainer.train()
 
             # Update tracking with current model's weights path
-            weights_path = f"model_weights/{self.exp_name}_best_{config['simulation_params']['duration']}s_{config['model']}.pth"
-            previous_weights[config['model']] = weights_path
+            weights_path = f"model_weights/{self.exp_name}_best_{config['simulation_params']['duration']}s_{config['model']['name']}.pth"
+            previous_weights[config['model']['name']] = weights_path
 
             loss_histories = [trainer.train_loss_history, trainer.test_loss_history]
             for loss_history, name in zip(loss_histories, ['train', 'test']):
@@ -100,7 +100,7 @@ class CombinationExperiment:
                 ]) # TODO: find out why mix of tensors and floats here
                 np.save(os.path.join(Path(config_path).parent, f'{name}.npy'), arr)
 
-            print(F"Evaulating model {config['model']} on sequence length {config['simulation_params']['duration']}s")
+            print(F"Evaulating model {config['model']['name']} on sequence length {config['simulation_params']['duration']}s")
             evaluator = Evaluator(Path(config_path), experiment_name=self.exp_name)
             results = evaluator.results
             restuls_path = os.path.join(Path(config_path).parent, 'results.csv')

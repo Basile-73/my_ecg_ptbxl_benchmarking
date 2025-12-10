@@ -35,13 +35,14 @@ class SimpleTrainer:
         self.experiment_name = experiment_name
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        model_name, simulation_params, data_volume, noise_paths, training_config = (
+        model_type, model_name, simulation_params, data_volume, noise_paths, training_config = (
             read_config(config_path)
         )
         self.simulation_params = simulation_params
         self.data_volume = data_volume
         self.noise_paths = noise_paths
         self.training_config = training_config
+        self.model_type = model_type
 
         self.train_noise_factory = NoiseFactory(
             noise_paths["data_path"],
@@ -93,7 +94,7 @@ class SimpleTrainer:
 
         self.model_name = model_name
         sequence_length = simulation_params["duration"] * simulation_params["sampling_rate"]
-        self.model = get_model(model_name, sequence_length = sequence_length)
+        self.model = get_model(model_type, sequence_length = sequence_length)
 
         if pre_trained_weights_path:
             self.model.load_state_dict(torch.load(pre_trained_weights_path))

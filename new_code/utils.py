@@ -17,17 +17,17 @@ def nested_get(d, path):
     return d
 
 
-def get_model(model_name: str, **kwargs):
-    if model_name == "imunet":
+def get_model(model_type: str, **kwargs):
+    if model_type == "imunet":
         from models.Stage1_IMUnet import IMUnet
         sequence_length = kwargs.get('sequence_length')
         return IMUnet(input_length=sequence_length)
-    elif model_name == "imunet_mamba":
+    elif model_type == "imunet_mamba":
         from models.Stage1_IMUnet_Mamba import IMUnet
         sequence_length = kwargs.get('sequence_length')
         return IMUnet(input_length=sequence_length)
     else:
-        print(f"Model ({model_name}) not found")
+        print(f"Model ({model_type}) not found")
 
 
 def get_loss_function(loss_name: str, **kwargs) -> Module:
@@ -51,12 +51,13 @@ def read_config(config_path: Path):
     with open(config_path) as f:
         config = yaml.safe_load(f)
 
-    model_name = config["model"]
+    model_type = config["model"]["type"]
+    model_name = config["model"]["name"]
     simulation_params = config["simulation_params"]
     data_volume = config["data_volume"]
     noise_paths = config["noise_paths"]
     training_config = config["training"]
-    return model_name, simulation_params, data_volume, noise_paths, training_config
+    return model_type, model_name, simulation_params, data_volume, noise_paths, training_config
 
 def get_sampleset_name(params, n, mode):
     keys = {"means_ai","stds_ai","means_bi","stds_bi"} # keys & values to exclude from file name

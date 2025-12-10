@@ -15,7 +15,7 @@ from utils import get_model, read_config, get_sampleset_name
 class Evaluator:
     def __init__(self, config_path: Path, experiment_name=None):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        model_name, simulation_params, data_volume, noise_paths, training_config = (
+        model_type, model_name, simulation_params, data_volume, noise_paths, training_config = (
             read_config(config_path)
         )
 
@@ -23,7 +23,7 @@ class Evaluator:
         self.duration = simulation_params["duration"]
         sequence_length = simulation_params["duration"] * simulation_params["sampling_rate"]
         self.model_name = model_name
-        self.model = get_model(model_name, sequence_length=sequence_length)
+        self.model = get_model(model_type, sequence_length=sequence_length)
         weights_name = f"{experiment_name}_" if experiment_name else ""
         state = torch.load(f"model_weights/{weights_name}best_{self.simulation_params['duration']}s_{model_name}.pth", map_location=self.device)
         self.model.load_state_dict(state)
