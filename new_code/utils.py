@@ -26,6 +26,10 @@ def get_model(model_type: str, **kwargs):
         from models.Stage1_IMUnet_Mamba import IMUnet
         sequence_length = kwargs.get('sequence_length')
         return IMUnet(input_length=sequence_length)
+    elif model_type == "unet":
+        from models.Stage1_UNet import UNet
+        sequence_length = kwargs.get('sequence_length')
+        return UNet(input_length=sequence_length)
     else:
         print(f"Model ({model_type}) not found")
 

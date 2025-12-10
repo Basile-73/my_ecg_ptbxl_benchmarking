@@ -130,7 +130,7 @@ class conv_3_block_UP(nn.Module):
         return x
 
 class UNet(nn.Module):#库中的torch.nn.Module模块
-    def __init__(self,in_channels =1):
+    def __init__(self, in_channels=1, input_length=3600):
         super(UNet, self).__init__()
 
         self.conv1=conv_3_block_DW( 1, 16, kernel_size_L=1,kernel_size_W=25,stride=1)
@@ -149,9 +149,9 @@ class UNet(nn.Module):#库中的torch.nn.Module模块
         self.avepool2 = nn.AvgPool2d((1, 2), stride=2)
         self.avepool3 = nn.AvgPool2d((1, 2), stride=2)
 
-        self.up1 = nn.Upsample(size=(1, 360), scale_factor=None, mode='bilinear', align_corners=None)
-        self.up2 = nn.Upsample(size=(1, 720), scale_factor=None, mode='bilinear', align_corners=None)
-        self.up3 = nn.Upsample(size=(1, 3600), scale_factor=None, mode='bilinear', align_corners=None)
+        self.up1 = nn.Upsample(size=(1, input_length // 10), scale_factor=None, mode='bilinear', align_corners=None)
+        self.up2 = nn.Upsample(size=(1, input_length // 5), scale_factor=None, mode='bilinear', align_corners=None)
+        self.up3 = nn.Upsample(size=(1, input_length), scale_factor=None, mode='bilinear', align_corners=None)
 
 
     def forward(self, x):
@@ -166,19 +166,19 @@ class UNet(nn.Module):#库中的torch.nn.Module模块
         x2 = self.conv4(x1_6)
 
         x2_1 = self.up1(x2)
-        x2_1 = torch.cat((x2_1, x1_5), 1)  # x7 cat x3
+        x2_1 = torch.cat((x2_1, x1_5), 1)
         x2_2 = self.conv5(x2_1)
         x2_3 = self.up2(x2_2)
-        x2_3 = torch.cat((x2_3, x1_3), 1)  # x7 cat x3
+        x2_3 = torch.cat((x2_3, x1_3), 1)
         x2_4 = self.conv6(x2_3)
         x2_5 = self.up3(x2_4)
-        x2_5 = torch.cat((x2_5, x1_1), 1)  # x7 cat x3
+        x2_5 = torch.cat((x2_5, x1_1), 1)
         x2_6 = self.conv7(x2_5)
         Xout = self.conv1m1(x2_6)
 
         return Xout
 
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu") # PyTorch v0.4.0
-model = UNet().to(device)
-summary(model, (1,1,3600))
+# device = torch.device("cuda" if torch.cuda.is_available() else "cpu") # PyTorch v0.4.0
+# model = UNet().to(device)
+# summary(model, (1,1,3600))
