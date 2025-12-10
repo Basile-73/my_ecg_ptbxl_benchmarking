@@ -22,7 +22,7 @@ class CombinationExperiment:
     def _get_configs(self, folder: str):
         configs = []
         path = Path(f"experiments/{self.exp_name}/{folder}")
-        for file in os.listdir(path):
+        for file in sorted(os.listdir(path)):
             if file.endswith(".yaml"):
                 with open(os.path.join(path, file)) as f:
                     configs.append(yaml.safe_load(f))
@@ -68,11 +68,29 @@ class CombinationExperiment:
             all_results= pd.concat([all_results, out])
         return all_results.sort_values(by=keys)
 
-    def run(self):
-        for config, config_path in zip(self.configs, self.config_paths):
+    def run(self, reuse_weights=False):
+        # Sort configs and config_paths by duration (shortest first)
+        config_tuples = list(zip(self.configs, self.config_paths))
+        config_tuples.sort(key=lambda x: x[0]["simulation_params"]["duration"])
+        sorted_configs, sorted_config_paths = zip(*config_tuples)
+
+        # Track previous weights per model type
+        previous_weights = {}  # key: model_name, value: weights_path
+
+        for config, config_path in zip(sorted_configs, sorted_config_paths):
             print(F"Training model {config['model']} on sequence length {config['simulation_params']['duration']}s")
-            trainer = SimpleTrainer(Path(config_path))
+
+            # Determine if we should pass pre-trained weights
+            pre_trained_weights_path = None
+            if reuse_weights and config['model'] in previous_weights:
+                pre_trained_weights_path = previous_weights[config['model']]
+
+            trainer = SimpleTrainer(Path(config_path), experiment_name=self.exp_name, pre_trained_weights_path=pre_trained_weights_path)
             trainer.train()
+
+            # Update tracking with current model's weights path
+            weights_path = f"model_weights/{self.exp_name}_best_{config['simulation_params']['duration']}s_{config['model']}.pth"
+            previous_weights[config['model']] = weights_path
 
             loss_histories = [trainer.train_loss_history, trainer.test_loss_history]
             for loss_history, name in zip(loss_histories, ['train', 'test']):
@@ -83,7 +101,7 @@ class CombinationExperiment:
                 np.save(os.path.join(Path(config_path).parent, f'{name}.npy'), arr)
 
             print(F"Evaulating model {config['model']} on sequence length {config['simulation_params']['duration']}s")
-            evaluator = Evaluator(Path(config_path))
+            evaluator = Evaluator(Path(config_path), experiment_name=self.exp_name)
             results = evaluator.results
             restuls_path = os.path.join(Path(config_path).parent, 'results.csv')
             results.to_csv(restuls_path, sep=",")
@@ -99,10 +117,10 @@ class CombinationExperiment:
 # experiment.run()
 
 
-def main(exp_name:str):
+def main(exp_name:str, reuse_weights=False):
     experiment = CombinationExperiment(exp_name)
     experiment._create_folders_and_save_configs()
-    experiment.run()
+    experiment.run(reuse_weights)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -110,6 +128,11 @@ if __name__ == "__main__":
         "--exp_name",
         help="Must match experiments folder name and becomes output folder name"
     )
+    parser.add_argument(
+        "--reuse_weights",
+        action="store_true",
+        help="Reuse weights from shorter duration models"
+    )
     args = parser.parse_args()
     exp_name = args.exp_name
-    main(exp_name)
+    main(exp_name, args.reuse_weights)

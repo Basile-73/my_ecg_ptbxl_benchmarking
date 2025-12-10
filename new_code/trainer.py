@@ -27,9 +27,12 @@ def set_seed(seed=42):
 
 
 class SimpleTrainer:
-    def __init__(self, config_path: Path, seed=42):
+    def __init__(self, config_path: Path, seed=42,
+                 experiment_name=None,
+                 pre_trained_weights_path=None):
         # Set seed for reproducibility
         set_seed(seed)
+        self.experiment_name = experiment_name
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         model_name, simulation_params, data_volume, noise_paths, training_config = (
@@ -91,6 +94,10 @@ class SimpleTrainer:
         self.model_name = model_name
         sequence_length = simulation_params["duration"] * simulation_params["sampling_rate"]
         self.model = get_model(model_name, sequence_length = sequence_length)
+
+        if pre_trained_weights_path:
+            self.model.load_state_dict(torch.load(pre_trained_weights_path))
+
         self.loss_fn = get_loss_function(training_config["loss_function"])
         self.optimizer = get_optimizer(
             training_config["optimizer"], self.model.parameters()
@@ -148,8 +155,9 @@ class SimpleTrainer:
 
             if test_loss < best:
                 best, wait = test_loss, 0
+                weights_name = f"{self.experiment_name}_" if self.experiment_name else ""
                 torch.save(
-                    self.model.state_dict(), f"model_weights/best_{self.simulation_params['duration']}s_{self.model_name}.pth"
+                    self.model.state_dict(), f"model_weights/{weights_name}best_{self.simulation_params['duration']}s_{self.model_name}.pth"
                 )
             else:
                 wait += 1
@@ -157,8 +165,9 @@ class SimpleTrainer:
                     print(f"Early stop at epoch {t}")
                     break
 
+        weights_name = f"{self.experiment_name}_" if self.experiment_name else ""
         self.model.load_state_dict(
-            torch.load(f"model_weights/best_{self.simulation_params['duration']}s_{self.model_name}.pth")
+            torch.load(f"model_weights/{weights_name}best_{self.simulation_params['duration']}s_{self.model_name}.pth")
         )
         self.train_loss_history = train_loss_history
         self.test_loss_history = test_loss_history
