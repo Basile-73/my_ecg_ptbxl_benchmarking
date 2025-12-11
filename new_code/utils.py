@@ -50,6 +50,11 @@ def get_model(model_type: str, **kwargs):
 def get_loss_function(loss_name: str, **kwargs) -> Module:
     if loss_name == "MSE":
         return nn.MSELoss()
+    elif loss_name == "STFT":
+        from losses.stft_loss_v2 import EnhancedSTFTLoss
+        return EnhancedSTFTLoss()
+    else:
+        raise ValueError(f"Loss function ({loss_name}) not found")
 
 
 def get_optimizer(
