@@ -10,6 +10,7 @@ from pathlib import Path
 import yaml
 import numpy as np
 from scipy.signal import butter, filtfilt
+from models.Armos.length_wrapper import AnyLengthWrapper
 
 def nested_get(d, path):
     for p in path.split("."):
@@ -46,6 +47,19 @@ def get_model(model_type: str, **kwargs):
     elif model_type == "drnet":
         from models.DRnet.Stage2_model3 import DRnet
         return DRnet()
+    elif model_type == "arsene_cnn":
+        from models.Armos.arsene_models import CNN_Denoising
+        sequence_length = kwargs.get('sequence_length')
+        return CNN_Denoising(squence_length=sequence_length)
+    elif model_type == "chiang_dae":
+        from models.Armos.chiang_dae import FCN_DAE
+        return AnyLengthWrapper(FCN_DAE(), factor=32)
+    elif model_type == "fotiadou_unet":
+        from models.Armos.fotiadou_unet import CNN_encoder_decoder
+        return AnyLengthWrapper(CNN_encoder_decoder(), factor=256)
+    elif model_type == "ant_drnn":
+        from models.Armos.antczak_drrn import DRRN_Denoising
+        return DRRN_Denoising()
     else:
         print(f"Model ({model_type}) not found")
 
