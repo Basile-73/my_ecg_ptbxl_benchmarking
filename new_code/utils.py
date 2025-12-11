@@ -19,17 +19,30 @@ def nested_get(d, path):
 
 def get_model(model_type: str, **kwargs):
     if model_type == "imunet":
-        from models.Stage1_IMUnet import IMUnet
+        from models.IMUnet.Stage1_IMUnet import IMUnet
         sequence_length = kwargs.get('sequence_length')
         return IMUnet(input_length=sequence_length)
     elif model_type == "imunet_mamba":
-        from models.Stage1_IMUnet_Mamba import IMUnet
+        from models.IMUnet.Stage1_IMUnet_Mamba import IMUnet
         sequence_length = kwargs.get('sequence_length')
         return IMUnet(input_length=sequence_length)
     elif model_type == "unet":
-        from models.Stage1_UNet import UNet
+        from models.UNet.Stage1_UNet import UNet
         sequence_length = kwargs.get('sequence_length')
         return UNet(input_length=sequence_length)
+    elif model_type == "unet_mamba":
+        from models.UNet.Stage1_UNet_Mamba import UNet
+        sequence_length = kwargs.get('sequence_length')
+        return UNet(input_length=sequence_length)
+    elif model_type == "unet_mamba_bidir":
+        from models.UNet.Stage1_UNet_Mamba import UNet
+        sequence_length = kwargs.get('sequence_length')
+        return UNet(input_length=sequence_length, bidirectional=True)
+    elif model_type == "mecge":
+        from models.MECGE.MECGE import MECGE
+        with open('models/MECGE/config/MECGE_phase.yaml') as f:
+            mecge_config = yaml.safe_load(f)
+        return MECGE(mecge_config)
     else:
         print(f"Model ({model_type}) not found")
 

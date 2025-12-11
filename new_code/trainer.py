@@ -110,14 +110,19 @@ class SimpleTrainer:
         self.train_loss_history = None
         self.test_loss_history = None
 
+        self.is_mecge = (self.model_type == "mecge")
+
     def _train_loop(self):
         self.model.train()
         for batch, (X, y) in tqdm(
             enumerate(self.train_data_loader), total=len(self.train_data_loader)
         ):
             X, y = X.to(self.device), y.to(self.device)
-            pred = self.model(X)
-            loss = self.loss_fn(pred, y)
+            if not self.is_mecge:
+                pred = self.model(X)
+                loss = self.loss_fn(pred, y)
+            else:
+                loss =self.model.get_loss(y, X) # MECGE expects (clean, noisy)
             loss.backward()
             self.optimizer.step()
             self.optimizer.zero_grad()
