@@ -43,6 +43,9 @@ def get_model(model_type: str, **kwargs):
         with open('models/MECGE/config/MECGE_phase.yaml') as f:
             mecge_config = yaml.safe_load(f)
         return MECGE(mecge_config)
+    elif model_type == "drnet":
+        from models.DRnet.Stage2_model3 import DRnet
+        return DRnet()
     else:
         print(f"Model ({model_type}) not found")
 

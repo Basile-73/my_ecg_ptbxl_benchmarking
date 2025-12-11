@@ -94,8 +94,8 @@ class SimpleTrainer:
         )
 
         self.model_name = model_name
-        sequence_length = simulation_params["duration"] * simulation_params["sampling_rate"]
-        self.model = get_model(model_type, sequence_length = sequence_length)
+        self.sequence_length = simulation_params["duration"] * simulation_params["sampling_rate"]
+        self.model = get_model(model_type, sequence_length = self.sequence_length)
 
         if pre_trained_weights_path and load_weights:
             self.model.load_state_dict(torch.load(pre_trained_weights_path))
@@ -201,6 +201,48 @@ class MambaTrainer(SimpleTrainer):
             filter(lambda p: p.requires_grad, self.model.parameters())
         )
 
+class Stage2Trainer(SimpleTrainer):
+    def __init__(self, config_path, stage1_type, stage1_weights_path, seed=42, experiment_name=None,
+                 pre_trained_weights_path=None):
+        super().__init__(config_path, seed, experiment_name, pre_trained_weights_path, load_weights=False)
+
+        self.stage1_model = get_model(stage1_type, sequence_length = self.sequence_length)
+        self.stage1_model.load_state_dict(torch.load(stage1_weights_path))
+        self.stage1_model.eval()
+        self.stage1_model.to(self.device)
+
+    def _train_loop(self):
+        self.model.train()
+        for batch, (X, y) in tqdm(
+            enumerate(self.train_data_loader), total=len(self.train_data_loader)
+        ):
+            X, y = X.to(self.device), y.to(self.device)
+            pred_1 = self.stage1_model(X)
+            input_stage_2 = torch.cat((X, pred_1), dim=1)
+            pred = self.model(input_stage_2)
+            loss = self.loss_fn(pred, y)
+            loss.backward()
+            self.optimizer.step()
+            self.optimizer.zero_grad()
+        return loss
+
+    def _test_loop(self):
+        self.model.eval()
+        test_loss, correct = 0, 0
+        with torch.no_grad():
+            for X, y in tqdm(self.test_data_loader, total=len(self.test_data_loader)):
+                X, y = X.to(self.device), y.to(self.device)
+                pred_1 = self.stage1_model(X)
+                input_stage_2 = torch.cat((X, pred_1), dim=1)
+                pred = self.model(input_stage_2)
+                test_loss += self.loss_fn(pred, y).item()
+                correct += (pred.argmax(1) == y).type(torch.float).sum().item()
+        test_loss = test_loss / len(self.test_data_loader)
+        return test_loss, correct
+
+
+
+
 # # example usage
 # trainer = MambaTrainer(
 #     config_path=Path("configs/train_config.yaml"),
@@ -216,5 +258,22 @@ class MambaTrainer(SimpleTrainer):
 # )
 # evaluator.results
 
-# path = Path(f"outputs/AAA_mamba_comparison/unet_mamba_bidir_patience_30_3.csv")
+# path = Path(f"outputs/AAA_mamba_comparison/unet_drnet_patience_30.csv")
 # evaluator.results.to_csv(path, sep=',')
+
+# trainer = Stage2Trainer(
+#     config_path=Path("configs/train_config.yaml"),
+#     stage1_type='unet',
+#     stage1_weights_path= 'model_weights/unet_best_30s_unet_1.pth',
+#     experiment_name="stage_2",
+# )
+# trainer.train()
+
+# from evaluator import Stage2Evaluator
+# evaluator = Stage2Evaluator(
+#     config_path=Path("configs/train_config.yaml"),
+#     stage1_type='unet',
+#     stage1_weights_path= 'model_weights/unet_best_30s_unet_1.pth',
+#     experiment_name="stage_2"
+# )
+# evaluator.results
