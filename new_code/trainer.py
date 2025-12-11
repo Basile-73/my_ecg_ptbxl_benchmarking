@@ -29,7 +29,8 @@ def set_seed(seed=42):
 class SimpleTrainer:
     def __init__(self, config_path: Path, seed=42,
                  experiment_name=None,
-                 pre_trained_weights_path=None):
+                 pre_trained_weights_path=None,
+                 load_weights=True):
         # Set seed for reproducibility
         set_seed(seed)
         self.experiment_name = experiment_name
@@ -96,7 +97,7 @@ class SimpleTrainer:
         sequence_length = simulation_params["duration"] * simulation_params["sampling_rate"]
         self.model = get_model(model_type, sequence_length = sequence_length)
 
-        if pre_trained_weights_path:
+        if pre_trained_weights_path and load_weights:
             self.model.load_state_dict(torch.load(pre_trained_weights_path))
 
         self.loss_fn = get_loss_function(training_config["loss_function"])
@@ -178,3 +179,42 @@ class SimpleTrainer:
         self.train_loss_history = train_loss_history
         self.test_loss_history = test_loss_history
         print("Done!")
+
+
+class MambaTrainer(SimpleTrainer):
+    def __init__(self, config_path, seed=42, experiment_name=None,
+                 pre_trained_weights_path=None):
+
+        super().__init__(config_path, seed, experiment_name, pre_trained_weights_path, load_weights=False)
+
+        if pre_trained_weights_path:
+            missing, unexpected = self.model.load_state_dict(
+                torch.load(pre_trained_weights_path), strict=False
+            )
+            print("missing:", missing)
+            print("unexpected:", unexpected)
+            for name, p in self.model.named_parameters():
+                p.requires_grad = name.startswith("mamba_layer")
+
+        self.optimizer = get_optimizer(
+            self.training_config["optimizer"],
+            filter(lambda p: p.requires_grad, self.model.parameters())
+        )
+
+# # example usage
+# trainer = MambaTrainer(
+#     config_path=Path("configs/train_config.yaml"),
+#     experiment_name="unet",
+#     pre_trained_weights_path='model_weights/unet_best_30s_unet_1.pth'
+# )
+# trainer.train()
+
+# from evaluator import Evaluator
+# evaluator = Evaluator(
+#     config_path=Path("configs/train_config.yaml"),
+#     experiment_name="unet"
+# )
+# evaluator.results
+
+# path = Path(f"outputs/AAA_mamba_comparison/unet_mamba_bidir_patience_30_3.csv")
+# evaluator.results.to_csv(path, sep=',')
