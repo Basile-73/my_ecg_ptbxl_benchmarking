@@ -99,10 +99,11 @@ def read_config(config_path: Path):
     model_type = config["model"]["type"]
     model_name = config["model"]["name"]
     simulation_params = config["simulation_params"]
+    split_length = config["split_length"]
     data_volume = config["data_volume"]
     noise_paths = config["noise_paths"]
     training_config = config["training"]
-    return model_type, model_name, simulation_params, data_volume, noise_paths, training_config
+    return model_type, model_name, simulation_params, split_length, data_volume, noise_paths, training_config
 
 def get_sampleset_name(params, n, mode):
     keys = {"means_ai","stds_ai","means_bi","stds_bi"} # keys & values to exclude from file name

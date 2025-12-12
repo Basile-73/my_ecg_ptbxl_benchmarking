@@ -39,8 +39,8 @@ class CombinationExperiment:
         config_paths = []
         for config in self.configs:
             model_name = config["model"]["name"]
-            duration = config["simulation_params"]["duration"]
-            folder_name = f"{output_folder}/{self.exp_name}/{duration}s_{model_name}"
+            duration = config["split_length"]
+            folder_name = f"{output_folder}/{self.exp_name}/{duration}_{model_name}"
             config_paths.append(os.path.join(folder_name, 'config.yaml'))
         return config_paths
 
@@ -71,14 +71,14 @@ class CombinationExperiment:
     def run(self, reuse_weights=False):
         # Sort configs and config_paths by duration (shortest first)
         config_tuples = list(zip(self.configs, self.config_paths))
-        config_tuples.sort(key=lambda x: x[0]["simulation_params"]["duration"])
+        config_tuples.sort(key=lambda x: x[0]['split_length'])
         sorted_configs, sorted_config_paths = zip(*config_tuples)
 
         # Track previous weights per model type
         previous_weights = {}  # key: model_name, value: weights_path
 
         for config, config_path in zip(sorted_configs, sorted_config_paths):
-            print(F"Training model {config['model']['name']} on sequence length {config['simulation_params']['duration']}s")
+            print(F"Training model {config['model']['name']} on split length {config['split_length']}")
 
             # Determine if we should pass pre-trained weights
             pre_trained_weights_path = None

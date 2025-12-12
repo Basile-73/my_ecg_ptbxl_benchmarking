@@ -153,7 +153,7 @@ class LengthExperimentDataset(SyntheticEcgDataset):
             self.n_samples = self.samples.shape[0]
 
 
-# Example Usage
+# # Example Usage
 # sim_params = {
 #     "duration": 10,
 #     "sampling_rate": 360,
@@ -184,6 +184,10 @@ class LengthExperimentDataset(SyntheticEcgDataset):
 # train_set = LengthExperimentDataset(
 #     sim_params, n_samples, train_factory, split_length=(5*360), save_clean_samples=False
 # )
+
+# retrieve first element and check shape
+# noisy, clean = train_set[0]
+# noisy.shape, clean.shape
 
 # train_set.samples.shape
 

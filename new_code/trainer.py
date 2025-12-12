@@ -7,7 +7,7 @@ from utils.getters import (
 )
 from pathlib import Path
 from ecg_noise_factory.noise import NoiseFactory
-from dataset import SyntheticEcgDataset
+from dataset import LengthExperimentDataset, SyntheticEcgDataset
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 import torch
@@ -36,9 +36,10 @@ class SimpleTrainer:
         self.experiment_name = experiment_name
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        model_type, model_name, simulation_params, data_volume, noise_paths, training_config = (
+        model_type, model_name, simulation_params, split_length, data_volume, noise_paths, training_config = (
             read_config(config_path)
         )
+        self.split_length = split_length
         self.simulation_params = simulation_params
         self.data_volume = data_volume
         self.noise_paths = noise_paths
@@ -60,22 +61,22 @@ class SimpleTrainer:
             seed=42,
         )
 
-
-        self.train_dataset = SyntheticEcgDataset(
+        self.train_dataset = LengthExperimentDataset(
             simulation_params,
             data_volume["n_samples_train"],
             self.train_noise_factory,
+            split_length=split_length,
             save_clean_samples=data_volume["save_clean_samples"],
         )
-        self.test_dataset = SyntheticEcgDataset(
+        self.test_dataset = LengthExperimentDataset(
             simulation_params,
             data_volume["n_samples_test"],
             self.test_noise_factory,
+            split_length=split_length,
             median=self.train_dataset.median,
             iqr=self.train_dataset.iqr,
             save_clean_samples=data_volume["save_clean_samples"],
         )
-
 
         # Create worker init function for DataLoader reproducibility
         def worker_init_fn(worker_id):
@@ -94,7 +95,7 @@ class SimpleTrainer:
         )
 
         self.model_name = model_name
-        self.sequence_length = simulation_params["duration"] * simulation_params["sampling_rate"]
+        self.sequence_length = split_length
         self.model = get_model(model_type, sequence_length = self.sequence_length)
 
         if pre_trained_weights_path and load_weights:
@@ -164,7 +165,7 @@ class SimpleTrainer:
                 best, wait = test_loss, 0
                 weights_name = f"{self.experiment_name}_" if self.experiment_name else ""
                 torch.save(
-                    self.model.state_dict(), f"model_weights/{weights_name}best_{self.simulation_params['duration']}s_{self.model_name}.pth"
+                    self.model.state_dict(), f"model_weights/{weights_name}best_{self.split_length}_{self.model_name}.pth"
                 )
             else:
                 wait += 1
@@ -174,7 +175,7 @@ class SimpleTrainer:
 
         weights_name = f"{self.experiment_name}_" if self.experiment_name else ""
         self.model.load_state_dict(
-            torch.load(f"model_weights/{weights_name}best_{self.simulation_params['duration']}s_{self.model_name}.pth")
+            torch.load(f"model_weights/{weights_name}best_{self.split_length}_{self.model_name}.pth")
         )
         self.train_loss_history = train_loss_history
         self.test_loss_history = test_loss_history
@@ -240,10 +241,15 @@ class Stage2Trainer(SimpleTrainer):
         test_loss = test_loss / len(self.test_data_loader)
         return test_loss, correct
 
-
-
-
 # # example usage
+
+# trainer = SimpleTrainer(
+#     config_path=Path("configs/train_config.yaml"),
+#     experiment_name="DELETE_ME",
+#     pre_trained_weights_path=None
+# )
+# trainer.train()
+
 # trainer = MambaTrainer(
 #     config_path=Path("configs/train_config.yaml"),
 #     experiment_name="unet",
