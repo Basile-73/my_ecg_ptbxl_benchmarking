@@ -6,8 +6,8 @@ from ecg_noise_factory.noise import NoiseFactory
 from typing import Optional
 import os
 import torch
-from utils import get_sampleset_name
-from utils import bandpass_filter
+from utils.getters import get_sampleset_name
+from utils.getters import bandpass_filter
 import time
 
 
@@ -126,9 +126,34 @@ class SyntheticEcgDataset(Dataset):
         self.median = np.median(vals)
         self.iqr = np.percentile(vals, 75) - np.percentile(vals, 25)
 
+class LengthExperimentDataset(SyntheticEcgDataset):
+    def __init__(
+        self,
+        simulation_params: dict,
+        n_samples: int,
+        noise_factory: NoiseFactory,
+        split_length: int,
+        median: Optional[float] = None,
+        iqr: Optional[float] = None,
+        save_clean_samples: bool = False,
+    ):
+        super().__init__(
+            simulation_params,
+            n_samples,
+            noise_factory,
+            median,
+            iqr,
+            save_clean_samples,
+        )
+        assert self.samples.shape[1] % split_length == 0, f"Signal length {self.samples.shape[1]} not divisible by split_length {split_length}"
+        self.split_length = split_length
+
+        if self.samples.shape[1] != split_length:
+            self.samples = self.samples.reshape(-1, split_length)
+            self.n_samples = self.samples.shape[0]
 
 
-# # Example Usage
+# Example Usage
 # sim_params = {
 #     "duration": 10,
 #     "sampling_rate": 360,
@@ -154,11 +179,18 @@ class SyntheticEcgDataset(Dataset):
 #     sim_params, n_samples, train_factory, save_clean_samples=False
 # )
 
+# train_set.samples.shape
+
+# train_set = LengthExperimentDataset(
+#     sim_params, n_samples, train_factory, split_length=(5*360), save_clean_samples=False
+# )
+
+# train_set.samples.shape
 
 
 # import matplotlib.pyplot as plt
 
-# for example_i in range(20):
+# for example_i in range(5):
 #     noisy, clean = train_set[example_i]
 #     clean_np = clean.reshape(-1)
 #     t = np.arange(len(clean_np)) / train_set.simulation_params["sampling_rate"]
