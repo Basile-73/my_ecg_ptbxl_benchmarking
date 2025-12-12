@@ -1,4 +1,4 @@
-from utils import (
+from utils.getters import (
     read_config,
     get_loss_function,
     get_model,

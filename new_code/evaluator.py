@@ -7,10 +7,10 @@ from torch.utils.data import DataLoader
 import matplotlib.pyplot as plt
 from functools import cached_property
 import pandas as pd
-from utils import get_percentiles
+from utils.getters import get_percentiles
 
 
-from utils import get_model, read_config, get_sampleset_name
+from utils.getters import get_model, read_config, get_sampleset_name
 
 class Evaluator:
     def __init__(self, config_path: Path, experiment_name=None):

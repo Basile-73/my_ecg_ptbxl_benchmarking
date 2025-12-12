@@ -6,7 +6,7 @@ from trainer import SimpleTrainer
 from evaluator import Evaluator
 import numpy as np
 import pandas as pd
-from utils import nested_get
+from utils.getters import nested_get
 
 
 class CombinationExperiment:

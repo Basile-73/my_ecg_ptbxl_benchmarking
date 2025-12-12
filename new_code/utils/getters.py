@@ -10,7 +10,13 @@ from pathlib import Path
 import yaml
 import numpy as np
 from scipy.signal import butter, filtfilt
+
+import sys
+from pathlib import Path
+sys.path.append(str(Path(__file__).parent.parent))
 from models.Armos.length_wrapper import AnyLengthWrapper
+
+
 
 def nested_get(d, path):
     for p in path.split("."):
