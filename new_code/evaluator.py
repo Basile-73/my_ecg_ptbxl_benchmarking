@@ -1,7 +1,7 @@
 from pathlib import Path
 import torch
 from ecg_noise_factory.noise import NoiseFactory
-from dataset import SyntheticEcgDataset
+from dataset import LengthExperimentDataset
 import numpy as np
 from torch.utils.data import DataLoader
 import matplotlib.pyplot as plt
@@ -15,18 +15,19 @@ from utils.getters import get_model, read_config, get_sampleset_name
 class Evaluator:
     def __init__(self, config_path: Path, experiment_name=None):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        model_type, model_name, simulation_params, data_volume, noise_paths, training_config = (
+        model_type, model_name, simulation_params, split_length, data_volume, noise_paths, training_config = (
             read_config(config_path)
         )
 
+        self.split_length = split_length
         self.experiment_name = experiment_name
         self.simulation_params = simulation_params
         self.duration = simulation_params["duration"]
         self.sequence_length = simulation_params["duration"] * simulation_params["sampling_rate"]
         self.model_name = model_name
-        self.model = get_model(model_type, sequence_length=self.sequence_length)
+        self.model = get_model(model_type, sequence_length=self.split_length)
         weights_name = f"{experiment_name}_" if experiment_name else ""
-        state = torch.load(f"model_weights/{weights_name}best_{self.simulation_params['duration']}s_{model_name}.pth", map_location=self.device)
+        state = torch.load(f"model_weights/{weights_name}best_{self.split_length}_{model_name}.pth", map_location=self.device)
         self.model.load_state_dict(state)
         self.model.to(self.device)
 
@@ -47,10 +48,11 @@ class Evaluator:
 
         scaler_stats = np.loadtxt(f'data/{self.train_sample_set_name}_scaler_stats')
 
-        self.eval_dataset = SyntheticEcgDataset(
+        self.eval_dataset = LengthExperimentDataset(
             simulation_params,
             data_volume["n_samples_test"],
             self.eval_noise_factory,
+            split_length=split_length,
             median=scaler_stats[0],
             iqr=scaler_stats[1],
             save_clean_samples=data_volume["save_clean_samples"],
