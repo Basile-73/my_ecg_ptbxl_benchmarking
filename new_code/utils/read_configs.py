@@ -53,5 +53,5 @@ def get_config_paths(configs, traits: list[str], experiment_name: str, output_fo
 # config_path = get_config_paths([config], fields, experiment_name)[0]
 # print(config_path)
 
-with open('../experiments/template2/experiment_config.yaml') as f:
-    config = yaml.safe_load(f)
+# with open('../experiments/template2/experiment_config.yaml') as f:
+#     config = yaml.safe_load(f)

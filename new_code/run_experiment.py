@@ -79,17 +79,19 @@ class CombinationExperiment:
 
         for config, config_path in zip(sorted_configs, sorted_config_paths):
             print(F"Training model {config['model']['name']} on split length {config['split_length']}")
+            print(F'Previous_weights_list: {previous_weights}')
 
             # Determine if we should pass pre-trained weights
             pre_trained_weights_path = None
             if reuse_weights and config['model']['name'] in previous_weights:
                 pre_trained_weights_path = previous_weights[config['model']['name']]
 
+            print(f'Pre Trained Weights Path: {pre_trained_weights_path}')
             trainer = SimpleTrainer(Path(config_path), experiment_name=self.exp_name, pre_trained_weights_path=pre_trained_weights_path)
             trainer.train()
 
             # Update tracking with current model's weights path
-            weights_path = f"model_weights/{self.exp_name}_best_{config['simulation_params']['duration']}s_{config['model']['name']}.pth"
+            weights_path = f"model_weights/{self.exp_name}_best_{config['split_length']}_{config['model']['name']}.pth"
             previous_weights[config['model']['name']] = weights_path
 
             loss_histories = [trainer.train_loss_history, trainer.test_loss_history]
