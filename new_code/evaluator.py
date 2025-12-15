@@ -23,7 +23,7 @@ class Evaluator:
         self.experiment_name = experiment_name
         self.simulation_params = simulation_params
         self.duration = simulation_params["duration"]
-        self.sequence_length = simulation_params["duration"] * simulation_params["sampling_rate"]
+        self.sequence_length = split_length
         self.model_name = model_name
         self.model = get_model(model_type, sequence_length=self.split_length)
         weights_name = f"{experiment_name}_" if experiment_name else ""
@@ -116,10 +116,10 @@ class Evaluator:
 
     def save_results(self):
         experiment_string = f"{self.experiment_name}" if self.experiment_name else ""
-        folder = Path("outputs") / experiment_string
+        folder = Path("outputs") / experiment_string / f"{self.split_length}_{self.model_name}"
         folder.mkdir(parents=True, exist_ok=False)
 
-        file_path = folder / f"{self.duration}s_{self.model_name}.csv"
+        file_path = folder / "results.csv"
         self.results.to_csv(file_path, sep=",")
 
 
@@ -189,8 +189,22 @@ class Stage2Evaluator(Evaluator):
         })
 
 # # example usage
-# config_path = Path('configs/train_config.yaml')
-# evaluator = Evaluator(config_path)
+# import yaml
+# from pathlib import Path
+# experiment_name = 'multitrain_5'
+# config_path = Path('outputs/train_runs/2025-12-14_14-34-49/multitrain_5_best_1800_drnet_unet_1.yaml')
+# with open(config_path) as f:
+#     config = yaml.safe_load(f)
+# stage1_type = config["model"]["stage_1_type"]
+# print(f"Stage 1 type: {stage1_type}")
+# stage1_weights_path = config["model"]["stage_1_weights_path"]
+# print(f"Stage 1 weights path: {stage1_weights_path}")
+# evaluator = Stage2Evaluator(
+#     config_path=config_path,
+#     stage1_type=stage1_type,
+#     stage1_weights_path=stage1_weights_path,
+#     experiment_name=experiment_name
+# )
 # evaluator.plot_examples(6)
 # evaluator.results
 # evaluator.save_results()

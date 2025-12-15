@@ -33,6 +33,10 @@ def get_model(model_type: str, **kwargs):
         from models.IMUnet.Stage1_IMUnet_Mamba import IMUnet
         sequence_length = kwargs.get('sequence_length')
         return IMUnet(input_length=sequence_length)
+    elif model_type == "imunet_mamba_bidir":
+        from models.IMUnet.Stage1_IMUnet_Mamba import IMUnet
+        sequence_length = kwargs.get('sequence_length')
+        return IMUnet(input_length=sequence_length, bidirectional=True)
     elif model_type == "unet":
         from models.UNet.Stage1_UNet import UNet
         sequence_length = kwargs.get('sequence_length')
