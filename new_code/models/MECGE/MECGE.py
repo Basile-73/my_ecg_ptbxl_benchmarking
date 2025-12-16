@@ -511,3 +511,10 @@ class MECGE(nn.Module):
             loss_gen_all += loss_con * 0.5
 
         return loss_gen_all
+
+# from torchsummary import summary
+# import yaml
+# device = torch.device("cuda" if torch.cuda.is_available() else "cpu") # PyTorch v0.4.0
+# config = yaml.load(open('../MECGE/config/MECGE_phase.yaml','r'), Loader=yaml.FullLoader)
+# model = MECGE(config).to(device)
+# summary(model, (1,1,3600))

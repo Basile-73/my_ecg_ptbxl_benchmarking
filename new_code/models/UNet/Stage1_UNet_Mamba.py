@@ -187,5 +187,5 @@ class UNet(nn.Module):#库中的torch.nn.Module模块
 
 
 # device = torch.device("cuda" if torch.cuda.is_available() else "cpu") # PyTorch v0.4.0
-# model = UNet().to(device)
-# summary(model, (1,1,3600))
+# model = UNet(bidirectional=True).to(device)
+# summary(model, input_size=(1, 1, 3600))

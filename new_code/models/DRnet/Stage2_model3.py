@@ -157,3 +157,8 @@ class DRnet(nn.Module):#库中的torch.nn.Module模块
         Xout=x1+x2+x3+x4
 
         return Xout
+
+# from torchsummary import summary
+# device = torch.device("cuda" if torch.cuda.is_available() else "cpu") # PyTorch v0.4.0
+# model = DRnet(in_channels =1).to(device)
+# summary(model, (2,1,3600))
