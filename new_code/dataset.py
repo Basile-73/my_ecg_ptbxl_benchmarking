@@ -6,9 +6,11 @@ from ecg_noise_factory.noise import NoiseFactory
 from typing import Optional
 import os
 import torch
-from utils.getters import get_sampleset_name
+from utils.getters import get_sampleset_name, get_sampleset_name_mitbh_arr
 from utils.getters import bandpass_filter
 import time
+import glob
+import wfdb
 
 
 class SyntheticEcgDataset(Dataset):
@@ -32,9 +34,7 @@ class SyntheticEcgDataset(Dataset):
         self.noise_factory = noise_factory
         self.median = median
         self.iqr = iqr
-        self.sample_set_name = get_sampleset_name(
-            simulation_params, n_samples, noise_factory.mode
-        )
+        self.sample_set_name = self._get_sampleset_name()
         self.save_clean_samples = save_clean_samples
         self.samples = None
 
@@ -68,6 +68,8 @@ class SyntheticEcgDataset(Dataset):
             clean.unsqueeze(0).unsqueeze(0), # y
         )  # [channel = 1, height = 1, length = self.simulation_params[duration] * self.simulation_params[sampling_rate]]
 
+    def _get_sampleset_name(self):
+        return get_sampleset_name(self.simulation_params, self.n_samples, self.noise_factory.mode)
 
     def _generate_samples(self):
         ecg_list = []
@@ -152,6 +154,91 @@ class LengthExperimentDataset(SyntheticEcgDataset):
             self.samples = self.samples.reshape(-1, split_length)
             self.n_samples = self.samples.shape[0]
 
+class MITBihArrDataset(LengthExperimentDataset):
+    def __init__(
+            self,
+            n_samples: int,
+            noise_factory: NoiseFactory,
+            duration: int,
+            split_length: int,
+            data_path: str,
+            median: Optional[float] = None,
+            iqr: Optional[float] = None,
+            save_clean_samples: bool = False
+    ):
+        dummy_simulation_params = {
+            "sampling_rate": noise_factory.sampling_rate,
+            "duration": duration,
+        }
+        self.duration = duration
+        self.path = data_path
+
+        super().__init__(
+            simulation_params=dummy_simulation_params,
+            n_samples=n_samples,
+            noise_factory=noise_factory,
+            split_length=split_length,
+            median=median,
+            iqr=iqr,
+            save_clean_samples=save_clean_samples,
+        )
+
+    def _get_sampleset_name(self):
+        return get_sampleset_name_mitbh_arr(self.duration, self.n_samples)
+
+    def _generate_samples(self):
+        fs = 360
+        win = int(self.duration * fs)
+        records = sorted({os.path.splitext(f)[0] for f in glob.glob(f"{self.path}/*.dat")})
+
+        total = 0
+        info = []
+        for r in records:
+            sig, _ = wfdb.rdsamp(r)
+            w = len(sig) // win
+            total += w
+            info.append((r, w))
+
+        if self.n_samples > total:
+            raise ValueError("Requested more samples than available")
+
+        X, remaining = [], self.n_samples
+        for r, w in info:
+            sig, _ = wfdb.rdsamp(r)
+            sig = sig[:,0]
+            take = min(w, remaining)
+            for i in range(take):
+                X.append(sig[i*win:(i+1)*win])
+            remaining -= take
+            if remaining == 0:
+                break
+
+        X = np.stack(X)
+        return bandpass_filter(X, fs)
+
+# Example Usage
+
+n_samples = 5
+
+train_factory = NoiseFactory(
+    data_path="noise/data",
+    sampling_rate=360,
+    config_path="noise/configs/synthetic.yaml",
+    mode="train",
+    seed=42,
+)
+
+train_set = MITBihArrDataset(
+    n_samples=n_samples,
+    noise_factory=train_factory,
+    duration=40,
+    split_length=(10*360),
+    data_path= 'data/mitdb_arr/physionet.org/files/mitdb/1.0.0/x_mitdb',
+    median=None,
+    iqr=None,
+    save_clean_samples=False
+)
+train_set.samples.shape
 
 # # Example Usage
 # sim_params = {
@@ -192,13 +279,13 @@ class LengthExperimentDataset(SyntheticEcgDataset):
 # train_set.samples.shape
 
 
-# import matplotlib.pyplot as plt
+import matplotlib.pyplot as plt
 
-# for example_i in range(5):
-#     noisy, clean = train_set[example_i]
-#     clean_np = clean.reshape(-1)
-#     t = np.arange(len(clean_np)) / train_set.simulation_params["sampling_rate"]
+for example_i in range(5):
+    noisy, clean = train_set[example_i]
+    clean_np = clean.reshape(-1)
+    t = np.arange(len(clean_np)) / train_set.simulation_params["sampling_rate"]
 
-#     width = train_set.simulation_params["duration"]
-#     plt.figure(figsize=(width, 3))
-#     plt.plot(t, clean_np, color="green", label="ground truth")
+    width = train_set.simulation_params["duration"]
+    plt.figure(figsize=(width, 3))
+    plt.plot(t, clean_np, color="green", label="ground truth")

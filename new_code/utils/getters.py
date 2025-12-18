@@ -115,6 +115,10 @@ def get_sampleset_name(params, n, mode):
     parts = [f"{k}_{filtered[k]}" for k in sorted(filtered)]
     return "_".join(parts + [f"n_samples_{n}", f"mode_{mode}"])
 
+def get_sampleset_name_mitbh_arr(duration, n_samples):
+    name = f'MIT_BIH_Arrythmia_duration_{duration}_n_samples_{n_samples}'
+    return name
+
 def bandpass_filter(data: np.ndarray, fs:int, lowcut: float = 1.0, highcut: float = 45.0,
                     order: int = 2) -> np.ndarray:
     """
