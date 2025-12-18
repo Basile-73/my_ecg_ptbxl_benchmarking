@@ -4,6 +4,7 @@ from utils.getters import (
     get_model,
     get_optimizer,
     get_scheduler,
+    get_data_set,
 )
 from pathlib import Path
 from ecg_noise_factory.noise import NoiseFactory
@@ -61,22 +62,12 @@ class SimpleTrainer:
             seed=42,
         )
 
-        self.train_dataset = LengthExperimentDataset(
-            simulation_params,
-            data_volume["n_samples_train"],
-            self.train_noise_factory,
-            split_length=split_length,
-            save_clean_samples=data_volume["save_clean_samples"],
-        )
-        self.test_dataset = LengthExperimentDataset(
-            simulation_params,
-            data_volume["n_samples_test"],
-            self.test_noise_factory,
-            split_length=split_length,
-            median=self.train_dataset.median,
-            iqr=self.train_dataset.iqr,
-            save_clean_samples=data_volume["save_clean_samples"],
-        )
+        self.train_dataset = get_data_set(config_path=config_path, mode='train', noise_factory=self.train_noise_factory)
+        self.test_dataset = get_data_set(config_path=config_path,
+                                         mode='test',
+                                         noise_factory=self.test_noise_factory,
+                                         median=self.train_dataset.median,
+                                         iqr=self.train_dataset.iqr)
 
         # Create worker init function for DataLoader reproducibility
         def worker_init_fn(worker_id):
@@ -164,6 +155,7 @@ class SimpleTrainer:
             if test_loss < best:
                 best, wait = test_loss, 0
                 weights_name = f"{self.experiment_name}_" if self.experiment_name else ""
+                weights_name = f"{weights_name}{self.train_dataset.dataset_type}_"
                 torch.save(
                     self.model.state_dict(), f"model_weights/{weights_name}best_{self.split_length}_{self.model_name}.pth"
                 )
@@ -174,6 +166,7 @@ class SimpleTrainer:
                     break
 
         weights_name = f"{self.experiment_name}_" if self.experiment_name else ""
+        weights_name = f"{weights_name}{self.train_dataset.dataset_type}_"
         self.model.load_state_dict(
             torch.load(f"model_weights/{weights_name}best_{self.split_length}_{self.model_name}.pth")
         )

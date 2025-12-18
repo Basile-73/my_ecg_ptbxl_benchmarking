@@ -10,11 +10,13 @@ from pathlib import Path
 import yaml
 import numpy as np
 from scipy.signal import butter, filtfilt
+from typing import Optional
 
 import sys
 from pathlib import Path
 sys.path.append(str(Path(__file__).parent.parent))
 from models.Armos.length_wrapper import AnyLengthWrapper
+from ecg_noise_factory.noise import NoiseFactory
 
 
 
@@ -83,6 +85,40 @@ def get_loss_function(loss_name: str, **kwargs) -> Module:
     else:
         raise ValueError(f"Loss function ({loss_name}) not found")
 
+def get_data_set(config_path: Path, mode: str, noise_factory: NoiseFactory, median: Optional[float] = None, iqr: Optional[float] = None):
+    assert mode == noise_factory.mode, "Mode mismatch between dataset and noise factory"
+    with open(config_path) as f:
+        config = yaml.safe_load(f)
+    dataset_name = config["dataset"]
+    _mode = mode if mode in ["train", "test"] else "test" # default to test for validation
+
+
+    if dataset_name == "mitbih_arrhythmia":
+        from dataset import MITBihArrDataset
+        return MITBihArrDataset(
+            n_samples=config["data_volume"][f"n_samples_{_mode}"],
+            noise_factory=noise_factory,
+            duration=config["mitbih_arrhythmia_params"]["duration"],
+            split_length=config["split_length"],
+            data_path=config["mitbih_arrhythmia_params"]["data_path"],
+            median = median,
+            iqr = iqr,
+            save_clean_samples=config['data_volume']['save_clean_samples']
+        )
+    elif dataset_name == "synthetic":
+        from dataset import LengthExperimentDataset
+        return LengthExperimentDataset(
+            simulation_params=config["simulation_params"],
+            n_samples=config["data_volume"][f"n_samples_{_mode}"],
+            noise_factory=noise_factory,
+            split_length=config["split_length"],
+            median = median,
+            iqr = iqr,
+            save_clean_samples=config['data_volume']['save_clean_samples']
+        )
+    else:
+        raise ValueError(f"Dataset ({dataset_name}) not found")
+
 
 def get_optimizer(
     optimizer_name: str, model_parameters: Iterable[Parameter], **kwargs
@@ -115,8 +151,8 @@ def get_sampleset_name(params, n, mode):
     parts = [f"{k}_{filtered[k]}" for k in sorted(filtered)]
     return "_".join(parts + [f"n_samples_{n}", f"mode_{mode}"])
 
-def get_sampleset_name_mitbh_arr(duration, n_samples):
-    name = f'MIT_BIH_Arrythmia_duration_{duration}_n_samples_{n_samples}'
+def get_sampleset_name_mitbh_arr(duration, n_samples, mode):
+    name = f'mitbih_arrhythmia_{duration}_n_samples_{n_samples}_mode_{mode}'
     return name
 
 def bandpass_filter(data: np.ndarray, fs:int, lowcut: float = 1.0, highcut: float = 45.0,

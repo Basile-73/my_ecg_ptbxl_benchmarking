@@ -4,9 +4,10 @@ import itertools
 from datetime import datetime
 import yaml, os
 from pathlib import Path
+import traceback
 
 def get_model_weights_name(config, experiment_name):
-        return f"{experiment_name}_best_{config['split_length']}_{config['model']['name']}"
+        return f"{experiment_name}_{config['dataset']}_best_{config['split_length']}_{config['model']['name']}"
 
 def check_paths(experiment_name):
     model_configs = get_configs(f'experiments/{experiment_name}/model_configs')
@@ -75,6 +76,7 @@ def main(experiment_name):
             trainer.train()
         except Exception as e:
             print(f"Error occurred while training {model_name}: {str(e)}")
+            traceback.print_exc()
             continue  # Continue to the next configuration
 
     for config in stage_2_configs:
@@ -94,6 +96,7 @@ def main(experiment_name):
             trainer.train()
         except Exception as e:
             print(f"Error occurred while training {model_name}: {str(e)}")
+            traceback.print_exc()
             continue
 
     for config in mamba_configs:
@@ -111,6 +114,7 @@ def main(experiment_name):
             trainer.train()
         except Exception as e:
             print(f"Error occurred while training {model_name}: {str(e)}")
+            traceback.print_exc()
             continue
 
 import argparse

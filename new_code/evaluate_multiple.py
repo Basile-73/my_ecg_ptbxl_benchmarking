@@ -3,6 +3,7 @@ from utils.read_configs import get_configs
 import itertools
 from evaluator import Evaluator, Stage2Evaluator
 from datetime import datetime
+import traceback
 
 def main(experiment_name):
     now_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
@@ -27,6 +28,7 @@ def main(experiment_name):
             evaluator.save_results()
         except Exception as e:
             print(f"Error occurred while evaluating {model_name}: {str(e)}")
+            traceback.print_exc()
             continue  # Continue to the next configuration
 
     for config in stage_2_configs:
@@ -46,6 +48,7 @@ def main(experiment_name):
             evaluator.save_results()
         except Exception as e:
             print(f"Error occurred while evaluating {model_name}: {str(e)}")
+            traceback.print_exc()
             continue
 
     print("DONE")

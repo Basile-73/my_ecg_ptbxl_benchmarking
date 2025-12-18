@@ -7,10 +7,11 @@ from torch.utils.data import DataLoader
 import matplotlib.pyplot as plt
 from functools import cached_property
 import pandas as pd
-from utils.getters import get_percentiles
+from utils.getters import get_percentiles, get_data_set
+import yaml
 
 
-from utils.getters import get_model, read_config, get_sampleset_name
+from utils.getters import get_model, read_config, get_sampleset_name, get_sampleset_name_mitbh_arr
 
 class Evaluator:
     def __init__(self, config_path: Path, experiment_name=None):
@@ -24,12 +25,6 @@ class Evaluator:
         self.simulation_params = simulation_params
         self.duration = simulation_params["duration"]
         self.sequence_length = split_length
-        self.model_name = model_name
-        self.model = get_model(model_type, sequence_length=self.split_length)
-        weights_name = f"{experiment_name}_" if experiment_name else ""
-        state = torch.load(f"model_weights/{weights_name}best_{self.split_length}_{model_name}.pth", map_location=self.device)
-        self.model.load_state_dict(state)
-        self.model.to(self.device)
 
 
         self.eval_noise_factory = NoiseFactory(
@@ -40,25 +35,46 @@ class Evaluator:
             seed=42,
         )
 
-        self.train_sample_set_name = get_sampleset_name(
-            simulation_params,
-            data_volume["n_samples_train"],
-            "train"
-        )
+        self.data_volumne = data_volume
+        with open(config_path) as f:
+            config = yaml.safe_load(f)
+        self.dataset_type = config["dataset"]
+        self.train_sample_set_name = self._get_sampleset_name()
 
         scaler_stats = np.loadtxt(f'data/{self.train_sample_set_name}_scaler_stats')
 
-        self.eval_dataset = LengthExperimentDataset(
-            simulation_params,
-            data_volume["n_samples_test"],
-            self.eval_noise_factory,
-            split_length=split_length,
+        self.eval_dataset = get_data_set(
+            config_path=config_path,
+            mode="eval",
+            noise_factory=self.eval_noise_factory,
             median=scaler_stats[0],
             iqr=scaler_stats[1],
-            save_clean_samples=data_volume["save_clean_samples"],
         )
 
         self.eval_data_loader = DataLoader(self.eval_dataset, training_config["batch_size"])
+
+        self.model_name = model_name
+        self.model = get_model(model_type, sequence_length=self.split_length)
+        weights_name = f"{experiment_name}_" if experiment_name else ""
+        weights_name = f"{weights_name}{self.eval_dataset.dataset_type}_"
+        state = torch.load(f"model_weights/{weights_name}best_{self.split_length}_{model_name}.pth", map_location=self.device)
+        self.model.load_state_dict(state)
+        self.model.to(self.device)
+
+    def _get_sampleset_name(self):
+        if self.dataset_type == 'synthetic':
+            return get_sampleset_name(
+                self.simulation_params,
+                self.data_volumne['n_samples_train'],
+                'train')
+        elif self.dataset_type == 'mitbih_arrhythmia':
+            return get_sampleset_name_mitbh_arr(
+                self.duration,
+                self.data_volumne['n_samples_train'],
+                'train'
+            )
+        else:
+            raise ValueError(f"Dataset type {self.dataset_type} not recognized")
 
 
     def plot_examples(self, idx):
@@ -116,7 +132,7 @@ class Evaluator:
 
     def save_results(self):
         experiment_string = f"{self.experiment_name}" if self.experiment_name else ""
-        folder = Path("outputs") / experiment_string / f"{self.split_length}_{self.model_name}"
+        folder = Path("outputs") / experiment_string / self.eval_dataset.dataset_type / f"{self.split_length}_{self.model_name}"
         folder.mkdir(parents=True, exist_ok=False)
 
         file_path = folder / "results.csv"

@@ -29,6 +29,7 @@ class SyntheticEcgDataset(Dataset):
             noise_factory.mode != "train" and (median is None or iqr is None)
         ), "scaler required when mode != train"
 
+        self.dataset_type = "synthetic"
         self.simulation_params = simulation_params
         self.n_samples = n_samples
         self.noise_factory = noise_factory
@@ -172,6 +173,7 @@ class MITBihArrDataset(LengthExperimentDataset):
         }
         self.duration = duration
         self.path = data_path
+        self.mode = noise_factory.mode
 
         super().__init__(
             simulation_params=dummy_simulation_params,
@@ -182,63 +184,59 @@ class MITBihArrDataset(LengthExperimentDataset):
             iqr=iqr,
             save_clean_samples=save_clean_samples,
         )
+        self.dataset_type = "mitbih_arrhythmia"
 
     def _get_sampleset_name(self):
-        return get_sampleset_name_mitbh_arr(self.duration, self.n_samples)
+        return get_sampleset_name_mitbh_arr(self.duration, self.n_samples, self.mode)
 
     def _generate_samples(self):
-        fs = 360
-        win = int(self.duration * fs)
+        fs, win = 360, int(self.duration * 360)
         records = sorted({os.path.splitext(f)[0] for f in glob.glob(f"{self.path}/*.dat")})
+        n = len(records)
+        splits = {
+            "train": records[:int(0.6*n)],
+            "test":  records[int(0.6*n):int(0.8*n)],
+            "eval":  records[int(0.8*n):],
+        }
+        records = splits[self.mode]
 
-        total = 0
-        info = []
+        X = []
         for r in records:
             sig, _ = wfdb.rdsamp(r)
-            w = len(sig) // win
-            total += w
-            info.append((r, w))
+            sig = sig[:,0]
+            for i in range(len(sig)//win):
+                X.append(sig[i*win:(i+1)*win])
 
-        if self.n_samples > total:
+        if self.n_samples > len(X):
             raise ValueError("Requested more samples than available")
 
-        X, remaining = [], self.n_samples
-        for r, w in info:
-            sig, _ = wfdb.rdsamp(r)
-            sig = sig[:,0]
-            take = min(w, remaining)
-            for i in range(take):
-                X.append(sig[i*win:(i+1)*win])
-            remaining -= take
-            if remaining == 0:
-                break
-
-        X = np.stack(X)
+        X = np.stack(X[:self.n_samples])
         return bandpass_filter(X, fs)
+
 
 # Example Usage
 
-n_samples = 5
+# n_samples = 1024
 
-train_factory = NoiseFactory(
-    data_path="noise/data",
-    sampling_rate=360,
-    config_path="noise/configs/synthetic.yaml",
-    mode="train",
-    seed=42,
-)
+# train_factory = NoiseFactory(
+#     data_path="noise/data",
+#     sampling_rate=360,
+#     config_path="noise/configs/synthetic.yaml",
+#     mode="train",
+#     seed=42,
+# )
 
-train_set = MITBihArrDataset(
-    n_samples=n_samples,
-    noise_factory=train_factory,
-    duration=40,
-    split_length=(10*360),
-    data_path= 'data/mitdb_arr/physionet.org/files/mitdb/1.0.0/x_mitdb',
-    median=None,
-    iqr=None,
-    save_clean_samples=False
-)
-train_set.samples.shape
+# train_set = MITBihArrDataset(
+#     n_samples=n_samples,
+#     noise_factory=train_factory,
+#     duration=40,
+#     split_length=(5*360),
+#     data_path= 'data/mitdb_arr/physionet.org/files/mitdb/1.0.0',
+#     median=None,
+#     iqr=None,
+#     save_clean_samples=False
+# )
+# train_set.samples.shape
 
 # # Example Usage
 # sim_params = {
@@ -278,14 +276,13 @@ train_set.samples.shape
 
 # train_set.samples.shape
 
+# import matplotlib.pyplot as plt
 
-import matplotlib.pyplot as plt
+# for example_i in range(10):
+#     noisy, clean = train_set[example_i]
+#     clean_np = clean.reshape(-1)
+#     t = np.arange(len(clean_np)) / train_set.simulation_params["sampling_rate"]
 
-for example_i in range(5):
-    noisy, clean = train_set[example_i]
-    clean_np = clean.reshape(-1)
-    t = np.arange(len(clean_np)) / train_set.simulation_params["sampling_rate"]
-
-    width = train_set.simulation_params["duration"]
-    plt.figure(figsize=(width, 3))
-    plt.plot(t, clean_np, color="green", label="ground truth")
+#     width = train_set.simulation_params["duration"]
+#     plt.figure(figsize=(width, 3))
+#     plt.plot(t, clean_np, color="green", label="ground truth")
