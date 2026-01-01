@@ -155,6 +155,10 @@ def get_sampleset_name_mitbh_arr(duration, n_samples, mode):
     name = f'mitbih_arrhythmia_{duration}_n_samples_{n_samples}_mode_{mode}'
     return name
 
+def get_sampleset_name_mitbh_sin(duration, n_samples, mode):
+    name = f'mitbih_sinus_{duration}_n_samples_{n_samples}_mode_{mode}'
+    return name
+
 def bandpass_filter(data: np.ndarray, fs:int, lowcut: float = 1.0, highcut: float = 45.0,
                     order: int = 2) -> np.ndarray:
     """

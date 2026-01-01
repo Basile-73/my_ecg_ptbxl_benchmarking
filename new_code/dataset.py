@@ -6,11 +6,12 @@ from ecg_noise_factory.noise import NoiseFactory
 from typing import Optional
 import os
 import torch
-from utils.getters import get_sampleset_name, get_sampleset_name_mitbh_arr
+from utils.getters import get_sampleset_name, get_sampleset_name_mitbh_arr, get_sampleset_name_mitbh_sin
 from utils.getters import bandpass_filter
 import time
 import glob
 import wfdb
+from scipy.signal import resample_poly
 
 
 class SyntheticEcgDataset(Dataset):
@@ -212,6 +213,66 @@ class MITBihArrDataset(LengthExperimentDataset):
 
         X = np.stack(X[:self.n_samples])
         return bandpass_filter(X, fs)
+
+
+class MITBihSinDataset(MITBihArrDataset):
+    def __init__(
+            self,
+            n_samples: int,
+            noise_factory: NoiseFactory,
+            duration: int,
+            split_length: int,
+            data_path: str,
+            median: Optional[float] = None,
+            iqr: Optional[float] = None,
+            save_clean_samples: bool = False
+    ):
+        super().__init__(
+            n_samples=n_samples,
+            noise_factory=noise_factory,
+            duration=duration,
+            split_length=split_length,
+            data_path=data_path,
+            median=median,
+            iqr=iqr,
+            save_clean_samples=save_clean_samples
+        )
+        self.dataset_type = "mitbih_sinus"
+
+    def _get_sampleset_name(self):
+        return get_sampleset_name_mitbh_sin(self.duration, self.n_samples, self.mode)
+
+    def _generate_samples(self):
+        fs_native = 128  # nsrdb native sampling rate
+        fs_target = 360  # target sampling rate
+        win = int(self.duration * fs_target)
+
+        records = sorted({os.path.splitext(f)[0] for f in glob.glob(f"{self.path}/*.dat")})
+        n = len(records)
+        splits = {
+            "train": records[:int(0.6*n)],
+            "test":  records[int(0.6*n):int(0.8*n)],
+            "eval":  records[int(0.8*n):],
+        }
+        records = splits[self.mode]
+
+        X = []
+        for r in records:
+            sig, _ = wfdb.rdsamp(r)
+            sig = sig[:,0]
+
+            # Resample from 128 Hz to 360 Hz
+            sig_resampled = resample_poly(sig, up=45, down=16)
+
+            # Split into windows based on 360 Hz
+            for i in range(len(sig_resampled)//win):
+                X.append(sig_resampled[i*win:(i+1)*win])
+
+        if self.n_samples > len(X):
+            raise ValueError("Requested more samples than available")
+
+        X = np.stack(X[:self.n_samples])
+        return bandpass_filter(X, fs_target)
 
 
 # Example Usage
