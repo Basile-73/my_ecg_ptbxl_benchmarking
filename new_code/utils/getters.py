@@ -105,6 +105,18 @@ def get_data_set(config_path: Path, mode: str, noise_factory: NoiseFactory, medi
             iqr = iqr,
             save_clean_samples=config['data_volume']['save_clean_samples']
         )
+    elif dataset_name == "mitbih_sinus":
+        from dataset import MITBihSinDataset
+        return MITBihSinDataset(
+            n_samples=config["data_volume"][f"n_samples_{_mode}"],
+            noise_factory=noise_factory,
+            duration=config["mitbih_sinus_params"]["duration"],
+            split_length=config["split_length"],
+            data_path=config["mitbih_sinus_params"]["data_path"],
+            median = median,
+            iqr = iqr,
+            save_clean_samples=config['data_volume']['save_clean_samples']
+        )
     elif dataset_name == "synthetic":
         from dataset import LengthExperimentDataset
         return LengthExperimentDataset(
