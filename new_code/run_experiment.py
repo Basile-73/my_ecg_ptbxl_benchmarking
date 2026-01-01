@@ -91,7 +91,7 @@ class CombinationExperiment:
             trainer.train()
 
             # Update tracking with current model's weights path
-            weights_path = f"model_weights/{self.exp_name}_best_{config['split_length']}_{config['model']['name']}.pth"
+            weights_path = f"model_weights/{self.exp_name}_{trainer.test_dataset.dataset_type}_best_{config['split_length']}_{config['model']['name']}.pth"
             previous_weights[config['model']['name']] = weights_path
 
             loss_histories = [trainer.train_loss_history, trainer.test_loss_history]
