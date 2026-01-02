@@ -201,17 +201,32 @@ class MITBihArrDataset(LengthExperimentDataset):
         }
         records = splits[self.mode]
 
+        # Calculate segments per record for even distribution
+        segments_per_record = self.n_samples // len(records)
+        remainder = self.n_samples % len(records)
+
         X = []
-        for r in records:
+        for idx, r in enumerate(records):
             sig, _ = wfdb.rdsamp(r)
             sig = sig[:,0]
-            for i in range(len(sig)//win):
-                X.append(sig[i*win:(i+1)*win])
 
-        if self.n_samples > len(X):
-            raise ValueError("Requested more samples than available")
+            # Calculate total available segments in this record
+            total_segments = len(sig) // win
 
-        X = np.stack(X[:self.n_samples])
+            # Determine how many segments to select from this record
+            num_segments_from_record = segments_per_record + (1 if idx < remainder else 0)
+
+            # Validate that the record has enough segments
+            if num_segments_from_record > total_segments:
+                raise ValueError(f"Record {r} has only {total_segments} segments but {num_segments_from_record} requested")
+
+            # Use np.linspace to select evenly-spaced indices
+            if num_segments_from_record > 0:
+                selected_indices = np.linspace(0, total_segments - 1, num_segments_from_record, dtype=int)
+                for seg_idx in selected_indices:
+                    X.append(sig[seg_idx*win:(seg_idx+1)*win])
+
+        X = np.stack(X)
         return bandpass_filter(X, fs)
 
 
@@ -248,6 +263,10 @@ class MITBihSinDataset(MITBihArrDataset):
         win = int(self.duration * fs_target)
 
         records = sorted({os.path.splitext(f)[0] for f in glob.glob(f"{self.path}/*.dat")})
+
+        if len(records) == 0:
+            raise ValueError(f"No .dat files found at {self.path}")
+
         n = len(records)
         splits = {
             "train": records[:int(0.6*n)],
@@ -256,22 +275,36 @@ class MITBihSinDataset(MITBihArrDataset):
         }
         records = splits[self.mode]
 
+
+        # Calculate segments per record for even distribution
+        segments_per_record = self.n_samples // len(records)
+        remainder = self.n_samples % len(records)
+
         X = []
-        for r in records:
+        for idx, r in enumerate(records):
             sig, _ = wfdb.rdsamp(r)
             sig = sig[:,0]
 
             # Resample from 128 Hz to 360 Hz
             sig_resampled = resample_poly(sig, up=45, down=16)
 
-            # Split into windows based on 360 Hz
-            for i in range(len(sig_resampled)//win):
-                X.append(sig_resampled[i*win:(i+1)*win])
+            # Calculate total available segments in this record (based on resampled signal)
+            total_segments = len(sig_resampled) // win
 
-        if self.n_samples > len(X):
-            raise ValueError("Requested more samples than available")
+            # Determine how many segments to select from this record
+            num_segments_from_record = segments_per_record + (1 if idx < remainder else 0)
 
-        X = np.stack(X[:self.n_samples])
+            # Validate that the record has enough segments
+            if num_segments_from_record > total_segments:
+                raise ValueError(f"Record {r} has only {total_segments} segments but {num_segments_from_record} requested")
+
+            # Use np.linspace to select evenly-spaced indices
+            if num_segments_from_record > 0:
+                selected_indices = np.linspace(0, total_segments - 1, num_segments_from_record, dtype=int)
+                for seg_idx in selected_indices:
+                    X.append(sig_resampled[seg_idx*win:(seg_idx+1)*win])
+
+        X = np.stack(X)
         return bandpass_filter(X, fs_target)
 
 
@@ -287,10 +320,43 @@ class MITBihSinDataset(MITBihArrDataset):
 #     seed=42,
 # )
 
-# train_set = MITBihArrDataset(
+
+# test_factory = NoiseFactory(
+#     data_path="noise/data",
+#     sampling_rate=360,
+#     config_path="noise/configs/synthetic.yaml",
+#     mode="test",
+#     seed=42,
+# )
+
+# Example Usage MITBihSinDataset
+
+# train_set = MITBihSinDataset(
 #     n_samples=n_samples,
 #     noise_factory=train_factory,
 #     duration=40,
+#     split_length=(5*360),
+#     data_path= 'data/mitdb_sinus/physionet.org/files/nsrdb/1.0.0',
+#     median=None,
+#     iqr=None,
+#     save_clean_samples=False
+# )
+
+# test_set = MITBihSinDataset(
+#     n_samples=256,
+#     noise_factory=test_factory,
+#     duration=40,
+#     split_length=(5*360),
+#     data_path= 'data/mitdb_sinus/physionet.org/files/nsrdb/1.0.0',
+#     median=train_set.median,
+#     iqr=train_set.iqr,
+#     save_clean_samples=False
+# )
+
+# train_set = MITBihArrDataset(
+#     n_samples=n_samples,
+#     noise_factory=train_factory,
+#     duration=20,
 #     split_length=(5*360),
 #     data_path= 'data/mitdb_arr/physionet.org/files/mitdb/1.0.0',
 #     median=None,
@@ -339,11 +405,22 @@ class MITBihSinDataset(MITBihArrDataset):
 
 # import matplotlib.pyplot as plt
 
+# print("Plotting some examples from the training set")
 # for example_i in range(10):
 #     noisy, clean = train_set[example_i]
 #     clean_np = clean.reshape(-1)
 #     t = np.arange(len(clean_np)) / train_set.simulation_params["sampling_rate"]
 
 #     width = train_set.simulation_params["duration"]
+#     plt.figure(figsize=(width, 3))
+#     plt.plot(t, clean_np, color="green", label="ground truth")
+
+# print("Plotting some examples from the test set")
+# for example_i in range(10):
+#     noisy, clean = test_set[example_i]
+#     clean_np = clean.reshape(-1)
+#     t = np.arange(len(clean_np)) / test_set.simulation_params["sampling_rate"]
+
+#     width = test_set.simulation_params["duration"]
 #     plt.figure(figsize=(width, 3))
 #     plt.plot(t, clean_np, color="green", label="ground truth")
