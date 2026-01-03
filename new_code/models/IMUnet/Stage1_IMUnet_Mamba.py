@@ -191,7 +191,7 @@ class Context_comparison(nn.Module):
 
 
 class IMUnet(nn.Module):#库中的torch.nn.Module模块
-    def __init__(self,in_channels =1, input_length=3600, bidirectional=False):
+    def __init__(self, in_channels=1, input_length=3600, d_state=256, d_conv=4, expand=4, bidirectional=False):
         super(IMUnet, self).__init__()
 
         self.conv1_1=conv_1_block_DW( 1, 16, kernel_size_L=1,kernel_size_W=25,stride=1)
@@ -209,7 +209,7 @@ class IMUnet(nn.Module):#库中的torch.nn.Module模块
         self.conv4_1=conv_1_block_MD(48, 64, kernel_size_L=1,kernel_size_W=3,stride=1)
 #        self.conv4_2=conv_1_block_MD(64, 64, kernel_size_L=1,kernel_size_W=3,stride=1)
         self.conv4_2=Context_comparison(64, 64, kernel_size_L=1,kernel_size_W=3,stride=1)
-        self.mamba_layer = ResidualMambaLayer(64, d_state=256, expand=4, bidirectional=bidirectional)
+        self.mamba_layer = ResidualMambaLayer(64, d_state=d_state, d_conv=d_conv, expand=expand, bidirectional=bidirectional)
         self.conv4_3=conv_1_block_MD(64, 64, kernel_size_L=1,kernel_size_W=3,stride=1)
 
         self.conv5_1=conv_1_block_UP(48+64, 48, kernel_size_L=1,kernel_size_W=5,stride=1)

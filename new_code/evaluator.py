@@ -16,7 +16,7 @@ from utils.getters import get_model, read_config, get_sampleset_name, get_sample
 class Evaluator:
     def __init__(self, config_path: Path, experiment_name=None):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        model_type, model_name, simulation_params, split_length, data_volume, noise_paths, training_config = (
+        model_config, model_type, model_name, simulation_params, split_length, data_volume, noise_paths, training_config = (
             read_config(config_path)
         )
 
@@ -25,6 +25,7 @@ class Evaluator:
         self.simulation_params = simulation_params
         self.duration = simulation_params["duration"]
         self.sequence_length = split_length
+        self.model_config = model_config
 
 
         self.eval_noise_factory = NoiseFactory(
@@ -54,7 +55,7 @@ class Evaluator:
         self.eval_data_loader = DataLoader(self.eval_dataset, training_config["batch_size"])
 
         self.model_name = model_name
-        self.model = get_model(model_type, sequence_length=self.split_length)
+        self.model = get_model(model_type, sequence_length=self.split_length, model_config=self.model_config)
         weights_name = f"{experiment_name}_" if experiment_name else ""
         weights_name = f"{weights_name}{self.eval_dataset.dataset_type}_"
         state = torch.load(f"model_weights/{weights_name}best_{self.split_length}_{model_name}.pth", map_location=self.device)
@@ -148,7 +149,7 @@ class Evaluator:
 class Stage2Evaluator(Evaluator):
     def __init__(self, config_path: Path, stage1_type, stage1_weights_path, experiment_name=None):
         super().__init__(config_path, experiment_name)
-        self.stage1_model = get_model(stage1_type, sequence_length = self.sequence_length)
+        self.stage1_model = get_model(stage1_type, sequence_length=self.sequence_length, model_config=self.model_config)
         self.stage1_model.load_state_dict(torch.load(stage1_weights_path))
         self.stage1_model.eval()
         self.stage1_model.to(self.device)

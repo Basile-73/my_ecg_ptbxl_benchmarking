@@ -37,7 +37,7 @@ class SimpleTrainer:
         self.experiment_name = experiment_name
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        model_type, model_name, simulation_params, split_length, data_volume, noise_paths, training_config = (
+        model_config, model_type, model_name, simulation_params, split_length, data_volume, noise_paths, training_config = (
             read_config(config_path)
         )
         self.split_length = split_length
@@ -46,6 +46,7 @@ class SimpleTrainer:
         self.noise_paths = noise_paths
         self.training_config = training_config
         self.model_type = model_type
+        self.model_config = model_config
 
         self.train_noise_factory = NoiseFactory(
             noise_paths["data_path"],
@@ -87,7 +88,7 @@ class SimpleTrainer:
 
         self.model_name = model_name
         self.sequence_length = split_length
-        self.model = get_model(model_type, sequence_length = self.sequence_length)
+        self.model = get_model(model_type, sequence_length=self.sequence_length, model_config=self.model_config)
 
         if pre_trained_weights_path and load_weights:
             self.model.load_state_dict(torch.load(pre_trained_weights_path))
@@ -200,7 +201,7 @@ class Stage2Trainer(SimpleTrainer):
                  pre_trained_weights_path=None):
         super().__init__(config_path, seed, experiment_name, pre_trained_weights_path, load_weights=False)
 
-        self.stage1_model = get_model(stage1_type, sequence_length = self.sequence_length)
+        self.stage1_model = get_model(stage1_type, sequence_length=self.sequence_length, model_config=self.model_config)
         self.stage1_model.load_state_dict(torch.load(stage1_weights_path))
         self.stage1_model.eval()
         self.stage1_model.to(self.device)

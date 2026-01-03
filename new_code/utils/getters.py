@@ -27,6 +27,13 @@ def nested_get(d, path):
 
 
 def get_model(model_type: str, **kwargs):
+    # Extract mamba parameters from model config with defaults
+    model_config = kwargs.get('model_config', {})
+    mamba_params = model_config.get('mamba_params', {})
+    d_state = mamba_params.get('d_state', 256)
+    d_conv = mamba_params.get('d_conv', 4)
+    expand = mamba_params.get('expand', 4)
+
     if model_type == "imunet":
         from models.IMUnet.Stage1_IMUnet import IMUnet
         sequence_length = kwargs.get('sequence_length')
@@ -34,11 +41,11 @@ def get_model(model_type: str, **kwargs):
     elif model_type == "imunet_mamba":
         from models.IMUnet.Stage1_IMUnet_Mamba import IMUnet
         sequence_length = kwargs.get('sequence_length')
-        return IMUnet(input_length=sequence_length)
+        return IMUnet(input_length=sequence_length, d_state=d_state, d_conv=d_conv, expand=expand)
     elif model_type == "imunet_mamba_bidir":
         from models.IMUnet.Stage1_IMUnet_Mamba import IMUnet
         sequence_length = kwargs.get('sequence_length')
-        return IMUnet(input_length=sequence_length, bidirectional=True)
+        return IMUnet(input_length=sequence_length, bidirectional=True, d_state=d_state, d_conv=d_conv, expand=expand)
     elif model_type == "unet":
         from models.UNet.Stage1_UNet import UNet
         sequence_length = kwargs.get('sequence_length')
@@ -46,11 +53,11 @@ def get_model(model_type: str, **kwargs):
     elif model_type == "unet_mamba":
         from models.UNet.Stage1_UNet_Mamba import UNet
         sequence_length = kwargs.get('sequence_length')
-        return UNet(input_length=sequence_length)
+        return UNet(input_length=sequence_length, d_state=d_state, d_conv=d_conv, expand=expand)
     elif model_type == "unet_mamba_bidir":
         from models.UNet.Stage1_UNet_Mamba import UNet
         sequence_length = kwargs.get('sequence_length')
-        return UNet(input_length=sequence_length, bidirectional=True)
+        return UNet(input_length=sequence_length, bidirectional=True, d_state=d_state, d_conv=d_conv, expand=expand)
     elif model_type == "mecge":
         from models.MECGE.MECGE import MECGE
         with open('models/MECGE/config/MECGE_phase.yaml') as f:
@@ -148,6 +155,7 @@ def read_config(config_path: Path):
     with open(config_path) as f:
         config = yaml.safe_load(f)
 
+    model_config = config["model"]
     model_type = config["model"]["type"]
     model_name = config["model"]["name"]
     simulation_params = config["simulation_params"]
@@ -155,7 +163,7 @@ def read_config(config_path: Path):
     data_volume = config["data_volume"]
     noise_paths = config["noise_paths"]
     training_config = config["training"]
-    return model_type, model_name, simulation_params, split_length, data_volume, noise_paths, training_config
+    return model_config, model_type, model_name, simulation_params, split_length, data_volume, noise_paths, training_config
 
 def get_sampleset_name(params, n, mode):
     keys = {"means_ai","stds_ai","means_bi","stds_bi"} # keys & values to exclude from file name
