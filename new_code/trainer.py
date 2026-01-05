@@ -249,14 +249,15 @@ class Stage2Trainer(SimpleTrainer):
         test_loss = test_loss / len(self.test_data_loader)
         return test_loss, correct
 
-# example usage
+# # example usage
 
-trainer = SimpleTrainer(
-    config_path=Path("configs/train_config.yaml"),
-    experiment_name="DELETE_ME",
-    pre_trained_weights_path=None
-)
-trainer.train()
+# trainer = SimpleTrainer(
+#     config_path=Path("configs/train_config.yaml"),
+#     seed=42,
+#     experiment_name="DELETE_ME",
+#     pre_trained_weights_path=None
+# )
+# trainer.train()
 
 # trainer = MambaTrainer(
 #     config_path=Path("configs/train_config.yaml"),
