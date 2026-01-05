@@ -1,3 +1,5 @@
+import os
+os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
 from utils.getters import (
     read_config,
     get_loss_function,
@@ -18,6 +20,7 @@ import numpy as np
 
 def set_seed(seed=42):
     """Set seeds for reproducibility."""
+    # Set CUBLAS workspace config before CUDA initialization
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
@@ -25,6 +28,13 @@ def set_seed(seed=42):
     torch.cuda.manual_seed_all(seed)
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
+
+    # Enforce deterministic algorithms
+    torch.use_deterministic_algorithms(True)
+
+    # Disable TF32 for full precision
+    torch.backends.cuda.matmul.allow_tf32 = False
+    torch.backends.cudnn.allow_tf32 = False
 
 
 class SimpleTrainer:
@@ -239,14 +249,14 @@ class Stage2Trainer(SimpleTrainer):
         test_loss = test_loss / len(self.test_data_loader)
         return test_loss, correct
 
-# # example usage
+# example usage
 
-# trainer = SimpleTrainer(
-#     config_path=Path("configs/train_config.yaml"),
-#     experiment_name="DELETE_ME",
-#     pre_trained_weights_path=None
-# )
-# trainer.train()
+trainer = SimpleTrainer(
+    config_path=Path("configs/train_config.yaml"),
+    experiment_name="DELETE_ME",
+    pre_trained_weights_path=None
+)
+trainer.train()
 
 # trainer = MambaTrainer(
 #     config_path=Path("configs/train_config.yaml"),
