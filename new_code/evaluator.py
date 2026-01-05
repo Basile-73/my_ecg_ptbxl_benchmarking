@@ -11,7 +11,7 @@ from utils.getters import get_percentiles, get_data_set
 import yaml
 
 
-from utils.getters import get_model, read_config, get_sampleset_name, get_sampleset_name_mitbh_arr, get_sampleset_name_mitbh_sin
+from utils.getters import get_model, read_config, get_sampleset_name, get_sampleset_name_mitbh_arr, get_sampleset_name_mitbh_sin, get_sampleset_name_european_st_t
 
 class Evaluator:
     def __init__(self, config_path: Path, experiment_name=None):
@@ -76,6 +76,12 @@ class Evaluator:
             )
         elif self.dataset_type == 'mitbih_sinus':
             return get_sampleset_name_mitbh_sin(
+                self.duration,
+                self.data_volumne['n_samples_train'],
+                'train'
+            )
+        elif self.dataset_type == 'european_st_t':
+            return get_sampleset_name_european_st_t(
                 self.duration,
                 self.data_volumne['n_samples_train'],
                 'train'

@@ -6,7 +6,7 @@ from ecg_noise_factory.noise import NoiseFactory
 from typing import Optional
 import os
 import torch
-from utils.getters import get_sampleset_name, get_sampleset_name_mitbh_arr, get_sampleset_name_mitbh_sin
+from utils.getters import get_sampleset_name, get_sampleset_name_mitbh_arr, get_sampleset_name_mitbh_sin, get_sampleset_name_european_st_t
 from utils.getters import bandpass_filter
 import time
 import glob
@@ -308,9 +308,90 @@ class MITBihSinDataset(MITBihArrDataset):
         return bandpass_filter(X, fs_target)
 
 
-# Example Usage
+class EuropeanSTTDataset(MITBihSinDataset):
+    def __init__(
+            self,
+            n_samples: int,
+            noise_factory: NoiseFactory,
+            duration: int,
+            split_length: int,
+            data_path: str,
+            median: Optional[float] = None,
+            iqr: Optional[float] = None,
+            save_clean_samples: bool = False
+    ):
+        super().__init__(
+            n_samples=n_samples,
+            noise_factory=noise_factory,
+            duration=duration,
+            split_length=split_length,
+            data_path=data_path,
+            median=median,
+            iqr=iqr,
+            save_clean_samples=save_clean_samples
+        )
+        self.dataset_type = "european_st_t"
 
-# n_samples = 1024
+    def _get_sampleset_name(self):
+        return get_sampleset_name_european_st_t(self.duration, self.n_samples, self.mode)
+
+    def _generate_samples(self):
+        fs_native = 250  # European ST-T native sampling rate
+        fs_target = 360  # target sampling rate
+        win = int(self.duration * fs_target)
+
+        records = sorted({os.path.splitext(f)[0] for f in glob.glob(f"{self.path}/*.dat")})
+
+        if len(records) == 0:
+            raise ValueError(f"No .dat files found at {self.path}")
+
+        n = len(records)
+        splits = {
+            "train": records[:int(0.6*n)],
+            "test":  records[int(0.6*n):int(0.8*n)],
+            "eval":  records[int(0.8*n):],
+        }
+        records = splits[self.mode]
+
+
+        # Calculate segments per record for even distribution
+        segments_per_record = self.n_samples // len(records)
+        remainder = self.n_samples % len(records)
+
+        X = []
+        for idx, r in enumerate(records):
+            sig, _ = wfdb.rdsamp(r)
+            sig = sig[:,0]
+
+            # Resample from 250 Hz to 360 Hz
+            sig_resampled = resample_poly(sig, up=36, down=25)
+
+            # Calculate total available segments in this record (based on resampled signal)
+            total_segments = len(sig_resampled) // win
+
+            # Determine how many segments to select from this record
+            num_segments_from_record = segments_per_record + (1 if idx < remainder else 0)
+
+            # Validate that the record has enough segments
+            if num_segments_from_record > total_segments:
+                raise ValueError(f"Record {r} has only {total_segments} segments but {num_segments_from_record} requested")
+
+            # Use np.linspace to select evenly-spaced indices
+            if num_segments_from_record > 0:
+                selected_indices = np.linspace(0, total_segments - 1, num_segments_from_record, dtype=int)
+                for seg_idx in selected_indices:
+                    X.append(sig_resampled[seg_idx*win:(seg_idx+1)*win])
+
+        X = np.stack(X)
+        X = bandpass_filter(X, fs_target, highcut=15)
+        alpha = 2
+        X = np.sign(X) * np.log1p(alpha * np.abs(X))
+        return X
+
+
+# # Example Usage
+
+# n_samples = 10
 
 # train_factory = NoiseFactory(
 #     data_path="noise/data",
@@ -320,18 +401,9 @@ class MITBihSinDataset(MITBihArrDataset):
 #     seed=42,
 # )
 
+# # Example Usage MITBihSinDataset
 
-# test_factory = NoiseFactory(
-#     data_path="noise/data",
-#     sampling_rate=360,
-#     config_path="noise/configs/synthetic.yaml",
-#     mode="test",
-#     seed=42,
-# )
-
-# Example Usage MITBihSinDataset
-
-# train_set = MITBihSinDataset(
+# train_set_sin = MITBihSinDataset(
 #     n_samples=n_samples,
 #     noise_factory=train_factory,
 #     duration=40,
@@ -342,17 +414,19 @@ class MITBihSinDataset(MITBihArrDataset):
 #     save_clean_samples=False
 # )
 
-# test_set = MITBihSinDataset(
-#     n_samples=256,
-#     noise_factory=test_factory,
+# # Example Usage EuropeanSTTDataset
+# train_set_eu = EuropeanSTTDataset(
+#     n_samples=n_samples,
+#     noise_factory=train_factory,
 #     duration=40,
 #     split_length=(5*360),
-#     data_path= 'data/mitdb_sinus/physionet.org/files/nsrdb/1.0.0',
-#     median=train_set.median,
-#     iqr=train_set.iqr,
+#     data_path= 'data/european_st_t/physionet.org/files/edb/1.0.0',
+#     median=None,
+#     iqr=None,
 #     save_clean_samples=False
 # )
 
+# # Example Usage MITBihArrDataset
 # train_set = MITBihArrDataset(
 #     n_samples=n_samples,
 #     noise_factory=train_factory,
@@ -363,9 +437,8 @@ class MITBihSinDataset(MITBihArrDataset):
 #     iqr=None,
 #     save_clean_samples=False
 # )
-# train_set.samples.shape
 
-# # Example Usage
+# # Example Usage SyntheticEcgDataset
 # sim_params = {
 #     "duration": 10,
 #     "sampling_rate": 360,
@@ -378,49 +451,45 @@ class MITBihSinDataset(MITBihArrDataset):
 #     "stds_bi" : [0.1, 0.1, 0.0, 0.0, 0.0],
 # }
 
-# n_samples = 5
-
-# train_factory = NoiseFactory(
-#     data_path="noise/data",
-#     sampling_rate=360,
-#     config_path="noise/configs/synthetic.yaml",
-#     mode="train",
-#     seed=42,
-# )
-# train_set = SyntheticEcgDataset(
+# train_set_syn = SyntheticEcgDataset(
 #     sim_params, n_samples, train_factory, save_clean_samples=False
 # )
 
-# train_set.samples.shape
-
-# train_set = LengthExperimentDataset(
+# # Example Usage LengthExperimentDataset
+# train_set_length = LengthExperimentDataset(
 #     sim_params, n_samples, train_factory, split_length=(5*360), save_clean_samples=False
 # )
 
-# retrieve first element and check shape
-# noisy, clean = train_set[0]
-# noisy.shape, clean.shape
 
-# train_set.samples.shape
-
+# # Plotting
 # import matplotlib.pyplot as plt
-
-# print("Plotting some examples from the training set")
-# for example_i in range(10):
-#     noisy, clean = train_set[example_i]
+# examples_to_plot = 3
+# print("Plotting some examples from the Synthetic train set")
+# for example_i in range(examples_to_plot):
+#     noisy, clean = train_set_syn[example_i]
 #     clean_np = clean.reshape(-1)
-#     t = np.arange(len(clean_np)) / train_set.simulation_params["sampling_rate"]
+#     t = np.arange(len(clean_np)) / train_set_syn.simulation_params["sampling_rate"]
 
-#     width = train_set.simulation_params["duration"]
+#     width = t[-1]
 #     plt.figure(figsize=(width, 3))
 #     plt.plot(t, clean_np, color="green", label="ground truth")
 
-# print("Plotting some examples from the test set")
-# for example_i in range(10):
-#     noisy, clean = test_set[example_i]
+# print("Plotting some examples from the European ST-T train set")
+# for example_i in range(examples_to_plot):
+#     noisy, clean = train_set_eu[example_i]
 #     clean_np = clean.reshape(-1)
-#     t = np.arange(len(clean_np)) / test_set.simulation_params["sampling_rate"]
+#     t = np.arange(len(clean_np)) / train_set_eu.simulation_params["sampling_rate"]
 
-#     width = test_set.simulation_params["duration"]
+#     width = t[-1]
+#     plt.figure(figsize=(width, 3))
+#     plt.plot(t, clean_np, color="green", label="ground truth")
+
+# print("Plotting some examples from the MIT-BIH Sinus train set")
+# for example_i in range(examples_to_plot):
+#     noisy, clean = train_set_sin[example_i]
+#     clean_np = clean.reshape(-1)
+#     t = np.arange(len(clean_np)) / train_set_sin.simulation_params["sampling_rate"]
+
+#     width = t[-1]
 #     plt.figure(figsize=(width, 3))
 #     plt.plot(t, clean_np, color="green", label="ground truth")

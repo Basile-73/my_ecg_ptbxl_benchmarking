@@ -124,6 +124,18 @@ def get_data_set(config_path: Path, mode: str, noise_factory: NoiseFactory, medi
             iqr = iqr,
             save_clean_samples=config['data_volume']['save_clean_samples']
         )
+    elif dataset_name == "european_st_t":
+        from dataset import EuropeanSTTDataset
+        return EuropeanSTTDataset(
+            n_samples=config["data_volume"][f"n_samples_{_mode}"],
+            noise_factory=noise_factory,
+            duration=config["european_st_t_params"]["duration"],
+            split_length=config["split_length"],
+            data_path=config["european_st_t_params"]["data_path"],
+            median = median,
+            iqr = iqr,
+            save_clean_samples=config['data_volume']['save_clean_samples']
+        )
     elif dataset_name == "synthetic":
         from dataset import LengthExperimentDataset
         return LengthExperimentDataset(
@@ -177,6 +189,10 @@ def get_sampleset_name_mitbh_arr(duration, n_samples, mode):
 
 def get_sampleset_name_mitbh_sin(duration, n_samples, mode):
     name = f'mitbih_sinus_{duration}_n_samples_{n_samples}_mode_{mode}'
+    return name
+
+def get_sampleset_name_european_st_t(duration, n_samples, mode):
+    name = f'european_st_t_{duration}_n_samples_{n_samples}_mode_{mode}'
     return name
 
 def bandpass_filter(data: np.ndarray, fs:int, lowcut: float = 1.0, highcut: float = 45.0,
