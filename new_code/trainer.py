@@ -108,6 +108,7 @@ class SimpleTrainer:
 
     def _train_loop(self):
         self.model.train()
+        train_loss = 0
         for batch, (X, y) in tqdm(
             enumerate(self.train_data_loader), total=len(self.train_data_loader)
         ):
@@ -117,10 +118,12 @@ class SimpleTrainer:
                 loss = self.loss_fn(pred, y)
             else:
                 loss =self.model.get_loss(y, X) # MECGE expects (clean, noisy)
+            train_loss += loss.item()
             loss.backward()
             self.optimizer.step()
             self.optimizer.zero_grad()
-        return loss
+        train_loss = train_loss / len(self.train_data_loader)
+        return train_loss
 
     def _test_loop(self):
         self.model.eval()
@@ -130,9 +133,9 @@ class SimpleTrainer:
                 X, y = X.to(self.device), y.to(self.device)
                 pred = self.model(X)
                 test_loss += self.loss_fn(pred, y).item()
-                correct += (pred.argmax(1) == y).type(torch.float).sum().item()
+                #correct += (pred.argmax(1) == y).type(torch.float).sum().item()
         test_loss = test_loss / len(self.test_data_loader)
-        return test_loss, correct
+        return test_loss #, correct
 
     def train(self):
         print(f"Using device: {self.device}")
@@ -144,7 +147,7 @@ class SimpleTrainer:
         for t in range(self.epochs):
             print(f"-------------------------------\nEpoch {t + 1}")
             train_loss = self._train_loop()
-            test_loss, _ = self._test_loop()
+            test_loss = self._test_loop()
             print(
                 f"Train loss: {train_loss}, Test loss: {test_loss}\n-------------------------------"
             )
