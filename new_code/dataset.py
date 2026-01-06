@@ -240,8 +240,13 @@ class MITBihSinDataset(MITBihArrDataset):
             data_path: str,
             median: Optional[float] = None,
             iqr: Optional[float] = None,
-            save_clean_samples: bool = False
+            save_clean_samples: bool = False,
+            highcut: float = 40.0,
+            alpha: float = None
     ):
+        self.highcut = highcut
+        self.alpha = alpha
+
         super().__init__(
             n_samples=n_samples,
             noise_factory=noise_factory,
@@ -305,7 +310,10 @@ class MITBihSinDataset(MITBihArrDataset):
                     X.append(sig_resampled[seg_idx*win:(seg_idx+1)*win])
 
         X = np.stack(X)
-        return bandpass_filter(X, fs_target)
+        X = bandpass_filter(X, fs_target, highcut=self.highcut)
+        if self.alpha is not None:
+            X = np.sign(X) * np.log1p(self.alpha * np.abs(X))
+        return X
 
 
 class EuropeanSTTDataset(MITBihSinDataset):
@@ -396,7 +404,7 @@ class EuropeanSTTDataset(MITBihSinDataset):
 # train_factory = NoiseFactory(
 #     data_path="noise/data",
 #     sampling_rate=360,
-#     config_path="noise/configs/synthetic.yaml",
+#     config_path="noise/configs/default.yaml",
 #     mode="train",
 #     seed=42,
 # )
@@ -440,7 +448,7 @@ class EuropeanSTTDataset(MITBihSinDataset):
 
 # # Example Usage SyntheticEcgDataset
 # sim_params = {
-#     "duration": 10,
+#     "duration": 5,
 #     "sampling_rate": 360,
 #     "heart_rate": [60, 80],
 #     "heart_rate_std": 5,
@@ -468,28 +476,32 @@ class EuropeanSTTDataset(MITBihSinDataset):
 # for example_i in range(examples_to_plot):
 #     noisy, clean = train_set_syn[example_i]
 #     clean_np = clean.reshape(-1)
+#     noisy_np = noisy.reshape(-1)
 #     t = np.arange(len(clean_np)) / train_set_syn.simulation_params["sampling_rate"]
 
 #     width = t[-1]
 #     plt.figure(figsize=(width, 3))
 #     plt.plot(t, clean_np, color="green", label="ground truth")
+#     plt.plot(t, noisy_np, color="red", label="noisy signal", alpha=0.5)
 
-# print("Plotting some examples from the European ST-T train set")
-# for example_i in range(examples_to_plot):
-#     noisy, clean = train_set_eu[example_i]
-#     clean_np = clean.reshape(-1)
-#     t = np.arange(len(clean_np)) / train_set_eu.simulation_params["sampling_rate"]
+# # print("Plotting some examples from the European ST-T train set")
+# # for example_i in range(examples_to_plot):
+# #     noisy, clean = train_set_eu[example_i]
+# #     clean_np = clean.reshape(-1)
+# #     t = np.arange(len(clean_np)) / train_set_eu.simulation_params["sampling_rate"]
 
-#     width = t[-1]
-#     plt.figure(figsize=(width, 3))
-#     plt.plot(t, clean_np, color="green", label="ground truth")
+# #     width = t[-1]
+# #     plt.figure(figsize=(width, 3))
+# #     plt.plot(t, clean_np, color="green", label="ground truth")
 
 # print("Plotting some examples from the MIT-BIH Sinus train set")
 # for example_i in range(examples_to_plot):
 #     noisy, clean = train_set_sin[example_i]
 #     clean_np = clean.reshape(-1)
+#     noisy_np = noisy.reshape(-1)
 #     t = np.arange(len(clean_np)) / train_set_sin.simulation_params["sampling_rate"]
 
 #     width = t[-1]
 #     plt.figure(figsize=(width, 3))
 #     plt.plot(t, clean_np, color="green", label="ground truth")
+#     plt.plot(t, noisy_np, color="red", label="noisy signal", alpha=0.5)

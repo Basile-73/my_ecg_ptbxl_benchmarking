@@ -122,7 +122,9 @@ def get_data_set(config_path: Path, mode: str, noise_factory: NoiseFactory, medi
             data_path=config["mitbih_sinus_params"]["data_path"],
             median = median,
             iqr = iqr,
-            save_clean_samples=config['data_volume']['save_clean_samples']
+            save_clean_samples=config['data_volume']['save_clean_samples'],
+            highcut=config["mitbih_sinus_params"].get("highcut", 45.0),
+            alpha=config["mitbih_sinus_params"].get("alpha", None)
         )
     elif dataset_name == "european_st_t":
         from dataset import EuropeanSTTDataset
