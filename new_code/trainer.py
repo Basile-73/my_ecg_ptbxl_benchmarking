@@ -30,7 +30,7 @@ def set_seed(seed=42):
     torch.backends.cudnn.benchmark = False
 
     # Enforce deterministic algorithms
-    torch.use_deterministic_algorithms(True)
+    torch.use_deterministic_algorithms(True, warn_only=True)
 
     # Disable TF32 for full precision
     torch.backends.cuda.matmul.allow_tf32 = False
@@ -237,7 +237,8 @@ class Stage2Trainer(SimpleTrainer):
 
     def _test_loop(self):
         self.model.eval()
-        test_loss, correct = 0, 0
+        # test_loss, correct = 0, 0
+        test_loss = 0
         with torch.no_grad():
             for X, y in tqdm(self.test_data_loader, total=len(self.test_data_loader)):
                 X, y = X.to(self.device), y.to(self.device)
@@ -245,9 +246,9 @@ class Stage2Trainer(SimpleTrainer):
                 input_stage_2 = torch.cat((X, pred_1), dim=1)
                 pred = self.model(input_stage_2)
                 test_loss += self.loss_fn(pred, y).item()
-                correct += (pred.argmax(1) == y).type(torch.float).sum().item()
+                # correct += (pred.argmax(1) == y).type(torch.float).sum().item()
         test_loss = test_loss / len(self.test_data_loader)
-        return test_loss, correct
+        return test_loss
 
 # # example usage
 

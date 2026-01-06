@@ -66,6 +66,12 @@ def get_model(model_type: str, **kwargs):
     elif model_type == "drnet":
         from models.DRnet.Stage2_model3 import DRnet
         return DRnet()
+    elif model_type == "drnet_mamba":
+        from models.DRnet.Stage2_Mamba import MambaDRnet
+        return MambaDRnet()
+    elif model_type == "drnet_mamba_bidir":
+        from models.DRnet.Stage2_Mamba import MambaDRnet
+        return MambaDRnet(bidirectional=True)
     elif model_type == "arsene_cnn":
         from models.Armos.arsene_models import CNN_Denoising
         sequence_length = kwargs.get('sequence_length')

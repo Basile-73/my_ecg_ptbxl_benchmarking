@@ -102,55 +102,56 @@ class conv_2_block(nn.Module):
 
 
 
-class DRnet(nn.Module):#库中的torch.nn.Module模块
-    def __init__(self,in_channels =1, bidirecitonal=False):
-        super(DRnet, self).__init__()
+class MambaDRnet(nn.Module):#库中的torch.nn.Module模块
+    def __init__(self,in_channels =1, bidirectional=False):
+        super(MambaDRnet, self).__init__()
 
 
-        self.conv1_1=conv_1_block( 2, 32, kernel_size_L=1,kernel_size_W=3, stride=1)
-        self.mamba_1=ResidualMambaLayer(32, bidirectional=bidirecitonal)
+        # self.conv1_1=conv_1_block( 2, 32, kernel_size_L=1,kernel_size_W=3, stride=1)
+        # self.mamba_1=ResidualMambaLayer(32, bidirectional=bidirectional)
 
 
         self.conv2_1=conv_1_block( 2, 32, kernel_size_L=1,kernel_size_W=5, stride=1)
-        self.mamba_2=ResidualMambaLayer(32, bidirectional=bidirecitonal)
+        self.mamba_2=ResidualMambaLayer(32, bidirectional=bidirectional)
 
 
-        self.conv3_1=conv_1_block( 2, 32, kernel_size_L=1,kernel_size_W=13, stride=1)
-        self.mamba_3=ResidualMambaLayer(32, bidirectional=bidirecitonal)
+        # self.conv3_1=conv_1_block( 2, 32, kernel_size_L=1,kernel_size_W=13, stride=1)
+        # self.mamba_3=ResidualMambaLayer(32, bidirectional=bidirectional)
 
 
         self.conv4_1=conv_1_block( 2, 32, kernel_size_L=1,kernel_size_W=15, stride=1)
-        self.mamba_4=ResidualMambaLayer(32, bidirectional=bidirecitonal)
+        self.mamba_4=ResidualMambaLayer(32, bidirectional=bidirectional)
 
 
-        self.conv1m1_1 = nn.Conv2d(in_channels=32, out_channels=1, kernel_size=(1,3),padding=(0,1))
+        # self.conv1m1_1 = nn.Conv2d(in_channels=32, out_channels=1, kernel_size=(1,3),padding=(0,1))
         self.conv1m1_2 = nn.Conv2d(in_channels=32, out_channels=1, kernel_size=(1,5),padding=(0,2))
-        self.conv1m1_3 = nn.Conv2d(in_channels=32, out_channels=1, kernel_size=(1,13),padding=(0,6))
+        # self.conv1m1_3 = nn.Conv2d(in_channels=32, out_channels=1, kernel_size=(1,13),padding=(0,6))
         self.conv1m1_4 = nn.Conv2d(in_channels=32, out_channels=1, kernel_size=(1,15),padding=(0,7))
 
     def forward(self, x):
 
-        x1 = self.conv1_1(x)
-        x1 = self.mamba_1(x1)
-        x1 = self.conv1m1_1(x1)
+        # x1 = self.conv1_1(x)
+        # x1 = self.mamba_1(x1)
+        # x1 = self.conv1m1_1(x1)
 
         x2 = self.conv2_1(x)
         x2 = self.mamba_2(x2)
         x2 = self.conv1m1_2(x2)
 
-        x3 = self.conv3_1(x)
-        x3 = self.mamba_3(x3)
-        x3 = self.conv1m1_3(x3)
+        # x3 = self.conv3_1(x)
+        # x3 = self.mamba_3(x3)
+        # x3 = self.conv1m1_3(x3)
 
         x4 = self.conv4_1(x)
         x4 = self.mamba_4(x4)
         x4 = self.conv1m1_4(x4)
 
-        Xout=x1+x2+x3+x4
+        # Xout=x1+x2+x3+x4
+        Xout=x2+x4
 
         return Xout
 
 # from torchsummary import summary
 # device = torch.device("cuda" if torch.cuda.is_available() else "cpu") # PyTorch v0.4.0
-# model = DRnet(in_channels =1).to(device)
+# model = MambaDRnet(in_channels =1).to(device)
 # summary(model, (2,1,3600))
