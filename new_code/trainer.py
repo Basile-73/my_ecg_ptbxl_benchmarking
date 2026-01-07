@@ -152,9 +152,9 @@ class SimpleTrainer:
 
         self.loss_fn = get_loss_function(training_config["loss_function"])
         self.optimizer = get_optimizer(
-            training_config["optimizer"], self.model.parameters()
+            training_config["optimizer"], self.model.parameters(), **training_config
         )
-        self.scheduler = get_scheduler(training_config["scheduler"], self.optimizer)
+        self.scheduler = get_scheduler(training_config["scheduler"], self.optimizer, **training_config)
         self.patience = training_config["early_stopping_patience"]
         self.epochs = training_config["epochs"]
 
@@ -231,7 +231,11 @@ class SimpleTrainer:
             print(
                 f"Train loss: {train_loss}, Test loss: {test_loss}\n-------------------------------"
             )
-            self.scheduler.step(test_loss)
+            # Handle different scheduler types
+            if isinstance(self.scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
+                self.scheduler.step(test_loss)
+            else:
+                self.scheduler.step()
 
             train_loss_history.append(train_loss)
             test_loss_history.append(test_loss)
@@ -294,7 +298,8 @@ class MambaTrainer(SimpleTrainer):
 
         self.optimizer = get_optimizer(
             self.training_config["optimizer"],
-            filter(lambda p: p.requires_grad, self.model.parameters())
+            filter(lambda p: p.requires_grad, self.model.parameters()),
+            **self.training_config
         )
 
 class Stage2Trainer(SimpleTrainer):

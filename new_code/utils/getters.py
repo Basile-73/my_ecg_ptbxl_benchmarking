@@ -5,7 +5,7 @@ import torch
 from torch.optim import Optimizer
 from torch.nn import Module
 from torch.optim.lr_scheduler import _LRScheduler
-from torch.optim.lr_scheduler import ReduceLROnPlateau
+from torch.optim.lr_scheduler import ReduceLROnPlateau, CosineAnnealingLR, CosineAnnealingWarmRestarts, LinearLR, SequentialLR
 from pathlib import Path
 import yaml
 import numpy as np
@@ -163,12 +163,36 @@ def get_optimizer(
     optimizer_name: str, model_parameters: Iterable[Parameter], **kwargs
 ) -> Optimizer:
     if optimizer_name == "Adam":
+        lr = kwargs.get("learning_rate", 1e-3)
         return torch.optim.Adam(model_parameters)
+    elif optimizer_name == "AdamW":
+        lr = kwargs.get("learning_rate", 1e-3)
+        weight_decay = kwargs.get("weight_decay", 1e-2)
+        betas = kwargs.get("betas", (0.9, 0.999))
+        eps = kwargs.get("eps", 1e-8)
+        return torch.optim.AdamW(model_parameters, lr=lr, weight_decay=weight_decay, betas=betas, eps=eps)
 
 
-def get_scheduler(scheduler_name: str, optimizer: Optimizer, **kwargs) -> _LRScheduler:
+def get_scheduler(scheduler_name: str, optimizer_object: Optimizer, **kwargs) -> _LRScheduler:
     if scheduler_name == "ReduceLROnPlateau":
-        return ReduceLROnPlateau(optimizer)
+        return ReduceLROnPlateau(optimizer_object)
+    elif scheduler_name == "CosineAnnealingLR":
+        T_max = kwargs.get("T_max")
+        eta_min = kwargs.get("eta_min", 0)
+        return CosineAnnealingLR(optimizer_object, T_max=T_max, eta_min=eta_min)
+    elif scheduler_name == "CosineAnnealingWarmRestarts":
+        T_0 = kwargs.get("T_0")
+        T_mult = kwargs.get("T_mult", 1)
+        eta_min = kwargs.get("eta_min", 0)
+        return CosineAnnealingWarmRestarts(optimizer_object, T_0=T_0, T_mult=T_mult, eta_min=eta_min)
+    elif scheduler_name == "CosineAnnealingWithWarmup":
+        warmup_epochs = kwargs.get("warmup_epochs", 5)
+        T_max = kwargs.get("T_max")
+        eta_min = kwargs.get("eta_min", 0)
+        warmup_start_factor = kwargs.get("warmup_start_factor", 0.1)
+        warmup_scheduler = LinearLR(optimizer_object, start_factor=warmup_start_factor, total_iters=warmup_epochs)
+        cosine_scheduler = CosineAnnealingLR(optimizer_object, T_max=T_max - warmup_epochs, eta_min=eta_min)
+        return SequentialLR(optimizer_object, schedulers=[warmup_scheduler, cosine_scheduler], milestones=[warmup_epochs])
 
 
 def read_config(config_path: Path):
