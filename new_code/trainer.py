@@ -18,6 +18,53 @@ import random
 import numpy as np
 
 
+class ExponentialMovingAverage:
+    """Maintains exponential moving average of model parameters."""
+
+    def __init__(self, model, decay=0.999):
+        """
+        Initialize EMA with model reference and decay rate.
+
+        Args:
+            model: PyTorch model to track
+            decay: EMA decay rate (default: 0.999)
+        """
+        self.decay = decay
+        self.model = model
+        self.shadow = {}  # Store EMA parameters
+        self.backup = {}  # Temporary storage during evaluation
+
+        # Initialize shadow parameters by deep copying all model parameters
+        for name, param in model.named_parameters():
+            if param.requires_grad:
+                self.shadow[name] = param.data.clone()
+
+    def update(self):
+        """Update EMA weights after optimizer step."""
+        for name, param in self.model.named_parameters():
+            if param.requires_grad:
+                # Apply EMA formula: shadow = decay * shadow + (1 - decay) * param
+                self.shadow[name] = self.decay * self.shadow[name] + (1 - self.decay) * param.data
+
+    def apply_shadow(self):
+        """Temporarily replace model weights with EMA weights."""
+        for name, param in self.model.named_parameters():
+            if param.requires_grad:
+                self.backup[name] = param.data.clone()
+                param.data = self.shadow[name].to(param.device)
+
+    def restore(self):
+        """Restore original model weights after evaluation."""
+        for name, param in self.model.named_parameters():
+            if param.requires_grad:
+                param.data = self.backup[name].to(param.device)
+        self.backup = {}
+
+    def state_dict(self):
+        """Return shadow parameters for saving."""
+        return self.shadow
+
+
 def set_seed(seed=42):
     """Set seeds for reproducibility."""
     # Set CUBLAS workspace config before CUDA initialization
@@ -111,6 +158,11 @@ class SimpleTrainer:
         self.patience = training_config["early_stopping_patience"]
         self.epochs = training_config["epochs"]
 
+        # Store EMA config for later initialization (after model.to(device))
+        self.use_ema = self.training_config.get("ema", False)
+        self.ema_decay = self.training_config.get("ema_decay", 0.999)
+        self.ema = None  # Will be initialized in train() after model.to(device)
+
         self.train_loss_history = None
         self.test_loss_history = None
 
@@ -132,11 +184,20 @@ class SimpleTrainer:
             loss.backward()
             self.optimizer.step()
             self.optimizer.zero_grad()
+
+            # Update EMA weights after optimizer step
+            if self.use_ema:
+                self.ema.update()
         train_loss = train_loss / len(self.train_data_loader)
         return train_loss
 
     def _test_loop(self):
         self.model.eval()
+
+        # Apply EMA weights before evaluation
+        if self.use_ema:
+            self.ema.apply_shadow()
+
         test_loss, correct = 0, 0
         with torch.no_grad():
             for X, y in tqdm(self.test_data_loader, total=len(self.test_data_loader)):
@@ -145,11 +206,20 @@ class SimpleTrainer:
                 test_loss += self.loss_fn(pred, y).item()
                 #correct += (pred.argmax(1) == y).type(torch.float).sum().item()
         test_loss = test_loss / len(self.test_data_loader)
+
+        # Restore original weights after evaluation
+        if self.use_ema:
+            self.ema.restore()
+
         return test_loss #, correct
 
     def train(self):
         print(f"Using device: {self.device}")
         self.model.to(self.device)
+
+        # Initialize EMA after model is on correct device
+        if self.use_ema:
+            self.ema = ExponentialMovingAverage(self.model, decay=self.ema_decay)
 
         best, wait, patience = 1e9, 0, self.patience
         train_loss_history = []
@@ -170,9 +240,19 @@ class SimpleTrainer:
                 best, wait = test_loss, 0
                 weights_name = f"{self.experiment_name}_" if self.experiment_name else ""
                 weights_name = f"{weights_name}{self.train_dataset.dataset_type}_"
-                torch.save(
-                    self.model.state_dict(), f"model_weights/{weights_name}best_{self.split_length}_{self.model_name}.pth"
-                )
+
+                # Save EMA weights if enabled, otherwise save regular weights
+                if self.use_ema:
+                    # Temporarily apply EMA weights to model, save complete state_dict, then restore
+                    self.ema.apply_shadow()
+                    torch.save(
+                        self.model.state_dict(), f"model_weights/{weights_name}best_{self.split_length}_{self.model_name}.pth"
+                    )
+                    self.ema.restore()
+                else:
+                    torch.save(
+                        self.model.state_dict(), f"model_weights/{weights_name}best_{self.split_length}_{self.model_name}.pth"
+                    )
             else:
                 wait += 1
                 if wait > patience:
@@ -181,9 +261,16 @@ class SimpleTrainer:
 
         weights_name = f"{self.experiment_name}_" if self.experiment_name else ""
         weights_name = f"{weights_name}{self.train_dataset.dataset_type}_"
+
+        # Load weights and reinitialize EMA shadow if enabled
         self.model.load_state_dict(
             torch.load(f"model_weights/{weights_name}best_{self.split_length}_{self.model_name}.pth")
         )
+        if self.use_ema:
+            # Reinitialize EMA shadow from loaded model parameters
+            for name, param in self.model.named_parameters():
+                if param.requires_grad:
+                    self.ema.shadow[name] = param.data.clone().to(param.device)
         self.train_loss_history = train_loss_history
         self.test_loss_history = test_loss_history
         print("Done!")
@@ -233,10 +320,19 @@ class Stage2Trainer(SimpleTrainer):
             loss.backward()
             self.optimizer.step()
             self.optimizer.zero_grad()
+
+            # Update EMA weights after optimizer step
+            if self.use_ema:
+                self.ema.update()
         return loss
 
     def _test_loop(self):
         self.model.eval()
+
+        # Apply EMA weights before evaluation
+        if self.use_ema:
+            self.ema.apply_shadow()
+
         # test_loss, correct = 0, 0
         test_loss = 0
         with torch.no_grad():
@@ -248,6 +344,11 @@ class Stage2Trainer(SimpleTrainer):
                 test_loss += self.loss_fn(pred, y).item()
                 # correct += (pred.argmax(1) == y).type(torch.float).sum().item()
         test_loss = test_loss / len(self.test_data_loader)
+
+        # Restore original weights after evaluation
+        if self.use_ema:
+            self.ema.restore()
+
         return test_loss
 
 # # example usage
