@@ -89,14 +89,16 @@ class SimpleTrainer:
                  experiment_name=None,
                  pre_trained_weights_path=None,
                  load_weights=True):
-        # Set seed for reproducibility
-        set_seed(seed)
-        self.experiment_name = experiment_name
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         model_config, model_type, model_name, simulation_params, split_length, data_volume, noise_paths, training_config = (
             read_config(config_path)
         )
+
+        seed = model_config.get("seed", seed)
+        set_seed(seed)
+        self.experiment_name = experiment_name
+
         self.split_length = split_length
         self.simulation_params = simulation_params
         self.data_volume = data_volume
