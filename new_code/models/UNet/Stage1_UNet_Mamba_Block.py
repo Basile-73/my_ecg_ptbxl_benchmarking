@@ -26,7 +26,7 @@ from torch.utils.data import Dataset, DataLoader
 import sys
 import os.path as osp
 sys.path.append(osp.dirname(osp.dirname(osp.abspath(__file__))))
-from mamba_layer import ResidualMambaLayer
+from mamba_layer import ResidualMambaLayer, ResidualMambaBlockLayer
 
 
 #class SELayer(nn.Module):
@@ -134,16 +134,16 @@ class conv_3_block_UP(nn.Module):
         return x
 
 
-class UNet(nn.Module):#库中的torch.nn.Module模块
+class UNetMambaBlock(nn.Module):#库中的torch.nn.Module模块
     def __init__(self, in_channels=1, input_length=3600, d_state=256, d_conv=4, expand=4, bidirectional=False):
-        super(UNet, self).__init__()
+        super(UNetMambaBlock, self).__init__()
 
         self.conv1=conv_3_block_DW( 1, 16, kernel_size_L=1,kernel_size_W=25,stride=1)
         self.conv2=conv_3_block_DW(16, 32, kernel_size_L=1,kernel_size_W=15,stride=1)
         self.conv3=conv_3_block_DW(32, 48, kernel_size_L=1,kernel_size_W=5,stride=1)
 
         self.conv4=conv_3_block(48, 48, kernel_size_L=1,kernel_size_W=3,stride=1)
-        self.mamba_layer = ResidualMambaLayer(48, d_state=d_state, d_conv=d_conv, expand=expand, bidirectional=bidirectional)
+        self.mamba_layer = ResidualMambaBlockLayer(48, d_state=d_state, d_conv=d_conv, expand=expand)
 
         self.conv5=conv_3_block_UP(48, 32, kernel_size_L=1,kernel_size_W=5,stride=1)
         self.conv6=conv_3_block_UP(32, 16, kernel_size_L=1,kernel_size_W=15,stride=1)

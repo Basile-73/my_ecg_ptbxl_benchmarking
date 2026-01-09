@@ -296,7 +296,7 @@ class MambaTrainer(SimpleTrainer):
             print("unexpected:", unexpected)
             if self.model_config.get("train_mamba_only", False):
                 for name, p in self.model.named_parameters():
-                    p.requires_grad = name.startswith("mamba_layer")
+                    p.requires_grad = name in missing
 
         self.optimizer = get_optimizer(
             self.training_config["optimizer"],
