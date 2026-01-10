@@ -8,6 +8,7 @@ from utils.getters import (
     get_scheduler,
     get_data_set,
 )
+from utils.wandb_utils import initialize_wandb, concat_all_configs
 from pathlib import Path
 from ecg_noise_factory.noise import NoiseFactory
 from dataset import LengthExperimentDataset, SyntheticEcgDataset
@@ -16,6 +17,7 @@ from tqdm import tqdm
 import torch
 import random
 import numpy as np
+import math
 
 
 class ExponentialMovingAverage:
@@ -106,6 +108,7 @@ class SimpleTrainer:
         self.training_config = training_config
         self.model_type = model_type
         self.model_config = model_config
+        self.track_wandb = bool(self.training_config.get("wandb", False))
 
         self.train_noise_factory = NoiseFactory(
             noise_paths["data_path"],
@@ -200,20 +203,33 @@ class SimpleTrainer:
         if self.use_ema:
             self.ema.apply_shadow()
 
-        test_loss, correct = 0, 0
+        test_loss = 0
+        total_squared_error = 0.0
+        total_signal_power = 0.0
+        total_numel = 0
         with torch.no_grad():
             for X, y in tqdm(self.test_data_loader, total=len(self.test_data_loader)):
                 X, y = X.to(self.device), y.to(self.device)
                 pred = self.model(X)
                 test_loss += self.loss_fn(pred, y).item()
-                #correct += (pred.argmax(1) == y).type(torch.float).sum().item()
+                error = y - pred
+                total_squared_error += torch.sum(error**2).item()
+                total_signal_power += torch.sum(y**2).item()
+                total_numel += error.numel()
+
         test_loss = test_loss / len(self.test_data_loader)
+
+        # Guard against division by zero when computing metrics
+        eps = 1e-12
+        mse = total_squared_error / max(total_numel, 1)
+        test_RMSE = math.sqrt(mse)
+        test_SNR = 10 * math.log10((total_signal_power + eps) / (total_squared_error + eps))
 
         # Restore original weights after evaluation
         if self.use_ema:
             self.ema.restore()
 
-        return test_loss #, correct
+        return test_loss, test_RMSE, test_SNR
 
     def train(self):
         print(f"Using device: {self.device}")
@@ -226,12 +242,34 @@ class SimpleTrainer:
         best, wait, patience = 1e9, 0, self.patience
         train_loss_history = []
         test_loss_history = []
+        test_SNR_history = []
+        test_RMSE_history = []
+
+        wandb_run = None
+        if self.track_wandb:
+            wandb_config = concat_all_configs([
+                self.model_config,
+                self.simulation_params,
+                self.training_config,
+                self.noise_paths,
+                {"data_volume": self.data_volume, "split_length": self.split_length}
+            ])
+
+            wandb_run = initialize_wandb(
+                experiment_name=self.experiment_name if self.experiment_name else "experiment not specified",
+                dataset_name=self.train_dataset.dataset_type,
+                run_name=self.model_name,
+                config=wandb_config
+            )
+
         for t in range(self.epochs):
             print(f"-------------------------------\nEpoch {t + 1}")
             train_loss = self._train_loop()
-            test_loss = self._test_loop()
+            test_loss, test_RMSE, test_SNR = self._test_loop()
+
             print(
                 f"Train loss: {train_loss}, Test loss: {test_loss}\n-------------------------------"
+                f"\nTest RMSE: {test_RMSE}, Test SNR: {test_SNR}"
             )
             # Handle different scheduler types
             if isinstance(self.scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
@@ -241,6 +279,18 @@ class SimpleTrainer:
 
             train_loss_history.append(train_loss)
             test_loss_history.append(test_loss)
+            test_SNR_history.append(test_SNR)
+            test_RMSE_history.append(test_RMSE)
+
+            if wandb_run:
+                wandb_run.log({
+                    "train/loss": train_loss,
+                    "test/loss": test_loss,
+                    "test/RMSE": test_RMSE,
+                    "test/SNR": test_SNR,
+                    "epoch": t + 1
+                })
+
 
             if test_loss < best:
                 best, wait = test_loss, 0
@@ -280,6 +330,8 @@ class SimpleTrainer:
         self.train_loss_history = train_loss_history
         self.test_loss_history = test_loss_history
         print("Done!")
+        if wandb_run:
+            wandb_run.finish()
 
 
 class MambaTrainer(SimpleTrainer):
@@ -315,6 +367,7 @@ class Stage2Trainer(SimpleTrainer):
         self.stage1_model.to(self.device)
 
     def _train_loop(self):
+        train_loss = 0
         self.model.train()
         for batch, (X, y) in tqdm(
             enumerate(self.train_data_loader), total=len(self.train_data_loader)
@@ -331,7 +384,10 @@ class Stage2Trainer(SimpleTrainer):
             # Update EMA weights after optimizer step
             if self.use_ema:
                 self.ema.update()
-        return loss
+
+            train_loss += loss.item()
+        train_loss = train_loss / len(self.train_data_loader)
+        return train_loss
 
     def _test_loop(self):
         self.model.eval()
@@ -340,8 +396,10 @@ class Stage2Trainer(SimpleTrainer):
         if self.use_ema:
             self.ema.apply_shadow()
 
-        # test_loss, correct = 0, 0
         test_loss = 0
+        total_squared_error = 0.0
+        total_signal_power = 0.0
+        total_numel = 0
         with torch.no_grad():
             for X, y in tqdm(self.test_data_loader, total=len(self.test_data_loader)):
                 X, y = X.to(self.device), y.to(self.device)
@@ -349,14 +407,24 @@ class Stage2Trainer(SimpleTrainer):
                 input_stage_2 = torch.cat((X, pred_1), dim=1)
                 pred = self.model(input_stage_2)
                 test_loss += self.loss_fn(pred, y).item()
-                # correct += (pred.argmax(1) == y).type(torch.float).sum().item()
+
+                error = y - pred
+                total_squared_error += torch.sum(error**2).item()
+                total_signal_power += torch.sum(y**2).item()
+                total_numel += error.numel()
         test_loss = test_loss / len(self.test_data_loader)
+
+        eps = 1e-12
+        mse = total_squared_error / max(total_numel, 1)
+        test_RMSE = math.sqrt(mse)
+        test_SNR = 10 * math.log10((total_signal_power + eps) / (total_squared_error + eps))
+
 
         # Restore original weights after evaluation
         if self.use_ema:
             self.ema.restore()
 
-        return test_loss
+        return test_loss, test_RMSE, test_SNR
 
 # # example usage
 
