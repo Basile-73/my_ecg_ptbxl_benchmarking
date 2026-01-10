@@ -31,12 +31,17 @@ class ResidualMambaLayer(nn.Module):
 from mamba_ssm.models.mixer_seq_simple import create_block
 
 class ResidualMambaBlockLayer(nn.Module):
-    def __init__(self, channels, d_state, d_conv, expand):
+    def __init__(self, channels, d_state, d_conv, expand, d_intermediate, mamba_type, headdim):
         super().__init__()
         ssm_cfg = dict(d_state=d_state, d_conv=d_conv, expand=expand)
+        ssm_cfg['layer'] = mamba_type
+        if mamba_type == 'Mamba2':
+            ssm_cfg['headdim'] = headdim
+            ssm_cfg['use_mem_eff_path'] = False
+            ssm_cfg['chunk_size'] = 64
         self.block = create_block(
             d_model=channels,
-            d_intermediate=96,
+            d_intermediate=d_intermediate,
             ssm_cfg=ssm_cfg,
             layer_idx=0
         )
