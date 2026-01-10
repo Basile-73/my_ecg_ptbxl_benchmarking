@@ -257,6 +257,7 @@ class SimpleTrainer:
 
             wandb_run = initialize_wandb(
                 experiment_name=self.experiment_name if self.experiment_name else "experiment not specified",
+                dataset_name=self.train_dataset.dataset_type,
                 run_name=self.model_name,
                 config=wandb_config
             )

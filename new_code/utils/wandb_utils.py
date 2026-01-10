@@ -1,11 +1,11 @@
 import wandb
 
-def initialize_wandb(experiment_name: str, run_name: str, config: dict):
+def initialize_wandb(experiment_name: str, dataset_name: str, run_name: str, config: dict):
     run = wandb.init(
         entity="basile-73-eth-zurich",
         project="new_code",
         name=run_name,
-        tags=[experiment_name],
+        tags=[experiment_name, dataset_name],
         config=config
     )
     return run
