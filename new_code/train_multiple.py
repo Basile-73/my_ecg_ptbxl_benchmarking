@@ -104,7 +104,7 @@ def main(experiment_name):
         print(f'Training model: {model_name}')
         config_path = save_config(config, now_str, model_name)
 
-        pre_trained_weights_path = config['model']['pre_trained_weights_path']
+        pre_trained_weights_path = config["model"].get("pre_trained_weights_path", None)
         try:
             trainer = MambaTrainer(
                 config_path=config_path,
