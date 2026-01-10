@@ -4,6 +4,11 @@
 #   ./run_exp.sh EXP_NAME CUDA_DEVICE
 # Example:
 #   ./run_exp.sh NEXT_mamba1_vs_mamba2 1
+# Alias:
+#   alias runexp='nohup ./train_evaluate.sh "$1" "$2" >/dev/null 2>&1 &'
+#   source ~/.bashrc
+#   runexp NEXT_mamba2_more_features 1
+
 
 set -e
 
