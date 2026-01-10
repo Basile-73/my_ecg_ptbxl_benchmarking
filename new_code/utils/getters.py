@@ -58,6 +58,10 @@ def get_model(model_type: str, **kwargs):
         from models.UNet.Stage1_UNet_Mamba import UNet
         sequence_length = kwargs.get('sequence_length')
         return UNet(input_length=sequence_length, bidirectional=True, d_state=d_state, d_conv=d_conv, expand=expand)
+    elif model_type == "unet_mamba_block":
+        from models.UNet.Stage1_UNet_Mamba_Block import UNetMambaBlock
+        sequence_length = kwargs.get('sequence_length')
+        return UNetMambaBlock(input_length=sequence_length, d_state=d_state, d_conv=d_conv, expand=expand)
     elif model_type == "mecge":
         from models.MECGE.MECGE import MECGE
         with open('models/MECGE/config/MECGE_phase.yaml') as f:
