@@ -27,3 +27,22 @@ class ResidualMambaLayer(nn.Module):
             y = (y + y_rev) / 2
         y = y.transpose(1, 2).unsqueeze(2)        # (B, C, 1, W)
         return x + y
+
+from mamba_ssm.models.mixer_seq_simple import create_block
+
+class ResidualMambaBlockLayer(nn.Module):
+    def __init__(self, channels, d_state, d_conv, expand):
+        super().__init__()
+        ssm_cfg = dict(d_state=d_state, d_conv=d_conv, expand=expand)
+        self.block = create_block(
+            d_model=channels,
+            d_intermediate=96,
+            ssm_cfg=ssm_cfg,
+            layer_idx=0
+        )
+
+    def forward(self, x):                  # (B,C,1,W)
+        x = x.squeeze(2).transpose(1,2)    # (B,W,C)
+        h, r = self.block(x, None)
+        y = h + r
+        return y.transpose(1,2).unsqueeze(2)
