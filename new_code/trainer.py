@@ -153,6 +153,7 @@ class SimpleTrainer:
         self.model = get_model(model_type, sequence_length=self.sequence_length, model_config=self.model_config)
 
         if pre_trained_weights_path and load_weights:
+            print(f"Loading weights from {pre_trained_weights_path}")
             self.model.load_state_dict(torch.load(pre_trained_weights_path))
 
         self.loss_fn = get_loss_function(training_config["loss_function"])
@@ -362,6 +363,7 @@ class Stage2Trainer(SimpleTrainer):
         super().__init__(config_path, seed, experiment_name, pre_trained_weights_path, load_weights=False)
 
         self.stage1_model = get_model(stage1_type, sequence_length=self.sequence_length, model_config=self.model_config)
+        print(f"Loading stage 1 weights from {stage1_weights_path}")
         self.stage1_model.load_state_dict(torch.load(stage1_weights_path))
         self.stage1_model.eval()
         self.stage1_model.to(self.device)

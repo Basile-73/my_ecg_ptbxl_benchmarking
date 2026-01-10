@@ -27,21 +27,32 @@ def check_paths(experiment_name):
 #         data['training']['epochs'] = 200
 #         ryaml.dump(data, p)
 
-# # check_paths('multitrain')
+# check_paths('curriculum_sinus_tm')
 # set_epochs('varlen_mamba')
 
 def group_configs(configs: list[str]):
-     stage_1_configs = [config for config in configs if (
-         config['model']['is_stage_2']==False and
-         config['model']['is_mamba']==False)]
+     sort_key = lambda config: config.get('split_length', float('inf'))
 
-     stage_2_configs = [config for config in configs if (
-         config['model']['is_stage_2']==True and
-         config['model']['is_mamba']==False)]
+     stage_1_configs = sorted(
+         [config for config in configs if (
+             config['model']['is_stage_2']==False and
+             config['model']['is_mamba']==False)],
+         key=sort_key
+     )
 
-     mamba_configs = [config for config in configs if (
-         config['model']['is_stage_2']==False and
-         config['model']['is_mamba']==True)]
+     stage_2_configs = sorted(
+         [config for config in configs if (
+             config['model']['is_stage_2']==True and
+             config['model']['is_mamba']==False)],
+         key=sort_key
+     )
+
+     mamba_configs = sorted(
+         [config for config in configs if (
+             config['model']['is_stage_2']==False and
+             config['model']['is_mamba']==True)],
+         key=sort_key
+     )
 
      return stage_1_configs, stage_2_configs, mamba_configs
 
@@ -68,10 +79,14 @@ def main(experiment_name):
         model_name = get_model_weights_name(config, experiment_name)
         print(f'Training model: {model_name}')
         config_path = save_config(config, now_str, model_name)
+        pre_trained_weights_path = config["model"].get("pre_trained_weights_path", None)
+        seed = config['model'].get('seed', 42)
         try:
             trainer = SimpleTrainer(
                 config_path=config_path,
-                experiment_name=experiment_name
+                experiment_name=experiment_name,
+                pre_trained_weights_path=pre_trained_weights_path,
+                seed=seed
             )
             trainer.train()
         except Exception as e:
@@ -86,12 +101,14 @@ def main(experiment_name):
 
         stage_1_type = config['model']['stage_1_type']
         stage_1_weights_path = config['model']['stage_1_weights_path']
+        seed = config['model'].get('seed', 42)
         try:
             trainer = Stage2Trainer(
                 config_path=config_path,
                 stage1_type=stage_1_type,
                 stage1_weights_path=stage_1_weights_path,
-                experiment_name=experiment_name
+                experiment_name=experiment_name,
+                seed=seed
             )
             trainer.train()
         except Exception as e:
@@ -105,11 +122,13 @@ def main(experiment_name):
         config_path = save_config(config, now_str, model_name)
 
         pre_trained_weights_path = config["model"].get("pre_trained_weights_path", None)
+        seed = config['model'].get('seed', 42)
         try:
             trainer = MambaTrainer(
                 config_path=config_path,
                 experiment_name=experiment_name,
-                pre_trained_weights_path=pre_trained_weights_path
+                pre_trained_weights_path=pre_trained_weights_path,
+                seed=seed
             )
             trainer.train()
         except Exception as e:
