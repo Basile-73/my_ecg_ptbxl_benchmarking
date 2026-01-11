@@ -37,6 +37,7 @@ def get_model(model_type: str, **kwargs):
     mamba_type = mamba_params.get('mamba_type', 'Mamba1')
     n_heads = mamba_params.get('n_heads', 1)
     channel_progression = mamba_params.get('channel_progression', [16, 32, 48])
+    n_blocks = mamba_params.get('n_blocks', 1)
 
     if model_type == "imunet":
         from models.IMUnet.Stage1_IMUnet import IMUnet
@@ -67,7 +68,7 @@ def get_model(model_type: str, **kwargs):
         sequence_length = kwargs.get('sequence_length')
         return UNetMambaBlock(input_length=sequence_length, d_state=d_state, d_conv=d_conv, expand=expand,
                               channel_progression=channel_progression, d_intermediate=d_intermediate,
-                              mamba_type=mamba_type, n_heads=n_heads)
+                              mamba_type=mamba_type, n_heads=n_heads, n_blocks=n_blocks)
     elif model_type == "mecge":
         from models.MECGE.MECGE import MECGE
         with open('models/MECGE/config/MECGE_phase.yaml') as f:
