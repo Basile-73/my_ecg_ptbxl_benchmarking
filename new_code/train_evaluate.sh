@@ -5,7 +5,7 @@
 # Example:
 #   ./run_exp.sh NEXT_mamba1_vs_mamba2 1
 # Alias:
-#   alias runexp='nohup ./train_evaluate.sh "$1" "$2" >/dev/null 2>&1 &'
+#   echo 'runexp() { nohup ./train_evaluate.sh "$1" "$2" >/dev/null 2>&1 & }' >> ~/.bashrc
 #   source ~/.bashrc
 #   runexp NEXT_mamba2_more_features 1
 
