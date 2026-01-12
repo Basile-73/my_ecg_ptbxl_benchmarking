@@ -3,15 +3,23 @@ import numpy as np
 from torch.utils.data import Dataset
 from tqdm import tqdm
 from ecg_noise_factory.noise import NoiseFactory
-from typing import Optional
+from typing import Optional, List
 import os
 import torch
-from utils.getters import get_sampleset_name, get_sampleset_name_mitbh_arr, get_sampleset_name_mitbh_sin, get_sampleset_name_european_st_t
+from utils.getters import (
+    get_sampleset_name,
+    get_sampleset_name_mitbh_arr,
+    get_sampleset_name_mitbh_sin,
+    get_sampleset_name_european_st_t,
+    get_sampleset_name_ptbxl,
+)
 from utils.getters import bandpass_filter
 import time
 import glob
 import wfdb
 from scipy.signal import resample_poly
+import pandas as pd
+from fractions import Fraction
 
 
 class SyntheticEcgDataset(Dataset):
@@ -397,6 +405,125 @@ class EuropeanSTTDataset(MITBihSinDataset):
         return X
 
 
+class PTBXLLengthDataset(LengthExperimentDataset):
+    def __init__(
+        self,
+        noise_factory: NoiseFactory,
+        split_length: int,
+        data_path: str,
+        original_sampling_frequency: int,
+        n_folds: int,
+        median: Optional[float] = None,
+        iqr: Optional[float] = None,
+        save_clean_samples: bool = False,
+        lead_index: int = 0,
+    ):
+        assert original_sampling_frequency in (100, 500), "PTB-XL supports 100 Hz or 500 Hz"
+        self.data_path = data_path
+        self.database_path = os.path.join(self.data_path, "ptbxl_database.csv")
+        if not os.path.exists(self.database_path):
+            raise FileNotFoundError(f"Missing PTB-XL metadata at {self.database_path}")
+        self.original_sampling_frequency = original_sampling_frequency
+        self.n_folds_requested = n_folds
+        self.lead_index = lead_index
+        self.dataset_type = "ptb_xl"
+        self._target_sampling_rate = noise_factory.sampling_rate
+        assert self._target_sampling_rate == 360, "PTB-XL currently resamples to 360 Hz"
+        self._validate_split_length(split_length)
+        self.split_length = split_length
+
+        dummy_simulation_params = {
+            "sampling_rate": self._target_sampling_rate,
+            "duration": split_length / self._target_sampling_rate,
+        }
+
+        self.selected_folds = self._resolve_folds(noise_factory.mode)
+
+        super().__init__(
+            simulation_params=dummy_simulation_params,
+            n_samples=max(1, n_folds),
+            noise_factory=noise_factory,
+            split_length=split_length,
+            median=median,
+            iqr=iqr,
+            save_clean_samples=save_clean_samples,
+        )
+
+        # Ensure __len__ reflects actual number of cached samples
+        if self.samples is None:
+            raise RuntimeError("PTB-XL samples did not load correctly")
+        self.n_samples = self.samples.shape[0]
+
+    def _validate_split_length(self, split_length: int):
+        # split_length is defined at the target sampling rate (e.g., 360 Hz)
+        # Convert to the equivalent number of original-sampling-rate samples
+        requested_original_samples = (
+            split_length * self.original_sampling_frequency / self._target_sampling_rate
+        )
+        max_original_samples = self.original_sampling_frequency * 10
+        assert (
+            requested_original_samples <= max_original_samples + 1e-6
+        ), "split_length exceeds 10 seconds at original sampling frequency"
+
+    def _resolve_folds(self, mode: str) -> List[int]:
+        if mode == "train":
+            assert 1 <= self.n_folds_requested <= 8, "Training folds must be between 1 and 8"
+            return list(range(1, 9))[: self.n_folds_requested]
+
+        assert (
+            self.n_folds_requested == 1
+        ), "Non-training modes must request exactly one fold"
+
+        if mode == "test":
+            return [10]
+        # Default to validation split when not explicitly training or testing
+        return [9]
+
+    def _get_sampleset_name(self):
+        return get_sampleset_name_ptbxl(
+            split_length=self.split_length,
+            folds=self.selected_folds,
+            original_fs=self.original_sampling_frequency,
+            mode=self.noise_factory.mode,
+            lead_index=self.lead_index,
+        )
+
+    def _generate_samples(self):
+        df = pd.read_csv(self.database_path)
+        df = df[df["strat_fold"].isin(self.selected_folds)]
+        if df.empty:
+            raise ValueError(f"No PTB-XL records found for folds {self.selected_folds}")
+
+        filename_col = "filename_lr" if self.original_sampling_frequency == 100 else "filename_hr"
+        segments = []
+        for _, row in df.iterrows():
+            record_base = os.path.join(self.data_path, row[filename_col])
+            sig, _ = wfdb.rdsamp(record_base)
+            if sig.shape[1] <= self.lead_index:
+                raise ValueError(
+                    f"Record {record_base} has only {sig.shape[1]} leads, cannot select index {self.lead_index}"
+                )
+            primary = sig[:, self.lead_index]
+            resampled = self._resample(primary)
+            n_segments = len(resampled) // self.split_length
+            for i in range(n_segments):
+                start = i * self.split_length
+                end = start + self.split_length
+                segments.append(resampled[start:end])
+
+        if not segments:
+            raise ValueError("PTB-XL dataset contains no segments after processing")
+
+        X = np.stack(segments)
+        X = bandpass_filter(X, self._target_sampling_rate)
+        self.n_samples = X.shape[0]
+        return X
+
+    def _resample(self, signal: np.ndarray) -> np.ndarray:
+        ratio = Fraction(self._target_sampling_rate, self.original_sampling_frequency).limit_denominator()
+        return resample_poly(signal, ratio.numerator, ratio.denominator)
+
+
 # # Example Usage
 
 # n_samples = 10
@@ -445,6 +572,21 @@ class EuropeanSTTDataset(MITBihSinDataset):
 #     iqr=None,
 #     save_clean_samples=False
 # )
+
+# Example Usage PTBXLLengthDataset
+# train_set_ptbxl = PTBXLLengthDataset(
+#     noise_factory=train_factory,
+#     split_length=3600,
+#     data_path='data/ptb-xl/1.0.3',
+#     original_sampling_frequency=100,
+#     n_folds=2,
+#     median=None,
+#     iqr=None,
+#     save_clean_samples=False,
+#     lead_index=0,
+# )
+
+# print(f"PTB-XL Length Dataset has {len(train_set_ptbxl)} samples of length {train_set_ptbxl.split_length}")
 
 # # Example Usage SyntheticEcgDataset
 # sim_params = {
@@ -500,6 +642,18 @@ class EuropeanSTTDataset(MITBihSinDataset):
 #     clean_np = clean.reshape(-1)
 #     noisy_np = noisy.reshape(-1)
 #     t = np.arange(len(clean_np)) / train_set_sin.simulation_params["sampling_rate"]
+
+#     width = t[-1]
+#     plt.figure(figsize=(width, 3))
+#     plt.plot(t, clean_np, color="green", label="ground truth")
+#     plt.plot(t, noisy_np, color="red", label="noisy signal", alpha=0.5)
+
+# print("Plotting some examples from the PTB-XL train set")
+# for example_i in range(examples_to_plot):
+#     noisy, clean = train_set_ptbxl[example_i]
+#     clean_np = clean.reshape(-1)
+#     noisy_np = noisy.reshape(-1)
+#     t = np.arange(len(clean_np)) / train_set_ptbxl.simulation_params["sampling_rate"]
 
 #     width = t[-1]
 #     plt.figure(figsize=(width, 3))

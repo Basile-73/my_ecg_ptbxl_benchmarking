@@ -11,7 +11,15 @@ from utils.getters import get_percentiles, get_data_set
 import yaml
 
 
-from utils.getters import get_model, read_config, get_sampleset_name, get_sampleset_name_mitbh_arr, get_sampleset_name_mitbh_sin, get_sampleset_name_european_st_t
+from utils.getters import (
+    get_model,
+    read_config,
+    get_sampleset_name,
+    get_sampleset_name_mitbh_arr,
+    get_sampleset_name_mitbh_sin,
+    get_sampleset_name_european_st_t,
+    get_sampleset_name_ptbxl,
+)
 
 class Evaluator:
     def __init__(self, config_path: Path, experiment_name=None):
@@ -40,6 +48,7 @@ class Evaluator:
         with open(config_path) as f:
             config = yaml.safe_load(f)
         self.dataset_type = config["dataset"]
+        self.ptb_xl_params = config.get("ptb_xl_params")
         self.train_sample_set_name = self._get_sampleset_name()
 
         scaler_stats = np.loadtxt(f'data/{self.train_sample_set_name}_scaler_stats')
@@ -85,6 +94,17 @@ class Evaluator:
                 self.duration,
                 self.data_volumne['n_samples_train'],
                 'train'
+            )
+        elif self.dataset_type == 'ptb_xl':
+            if not self.ptb_xl_params:
+                raise ValueError("ptb_xl_params missing from config")
+            folds = list(range(1, 9))[: self.data_volumne['n_folds_train']]
+            return get_sampleset_name_ptbxl(
+                split_length=self.split_length,
+                folds=folds,
+                original_fs=self.ptb_xl_params['original_sampling_rate'],
+                mode='train',
+                lead_index=self.ptb_xl_params.get('lead_index', 0)
             )
         else:
             raise ValueError(f"Dataset type {self.dataset_type} not recognized")

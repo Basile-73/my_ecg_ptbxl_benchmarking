@@ -1,5 +1,5 @@
 from torch import nn
-from typing import Iterable
+from typing import Iterable, List
 from torch.nn import Parameter
 import torch
 from torch.optim import Optimizer
@@ -166,6 +166,19 @@ def get_data_set(config_path: Path, mode: str, noise_factory: NoiseFactory, medi
             iqr = iqr,
             save_clean_samples=config['data_volume']['save_clean_samples']
         )
+    elif dataset_name == "ptb_xl":
+        from dataset import PTBXLLengthDataset
+        return PTBXLLengthDataset(
+            noise_factory=noise_factory,
+            split_length=config["split_length"],
+            data_path=config["ptb_xl_params"]["data_path"],
+            original_sampling_frequency=config["ptb_xl_params"]["original_sampling_rate"],
+            n_folds=config["data_volume"][f"n_folds_{_mode}"],
+            median=median,
+            iqr=iqr,
+            save_clean_samples=config['data_volume']['save_clean_samples'],
+            lead_index=config["ptb_xl_params"].get("lead_index", 0),
+        )
     else:
         raise ValueError(f"Dataset ({dataset_name}) not found")
 
@@ -240,6 +253,10 @@ def get_sampleset_name_mitbh_sin(duration, n_samples, mode):
 def get_sampleset_name_european_st_t(duration, n_samples, mode):
     name = f'european_st_t_{duration}_n_samples_{n_samples}_mode_{mode}'
     return name
+
+def get_sampleset_name_ptbxl(split_length: int, folds: List[int], original_fs: int, mode: str, lead_index: int) -> str:
+    folds_part = "-".join(str(f) for f in sorted(folds))
+    return f'ptb_xl_split_{split_length}_orig_{original_fs}_folds_{folds_part}_lead_{lead_index}_mode_{mode}'
 
 def bandpass_filter(data: np.ndarray, fs:int, lowcut: float = 1.0, highcut: float = 45.0,
                     order: int = 2) -> np.ndarray:
