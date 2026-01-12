@@ -17,18 +17,18 @@ def check_paths(experiment_name):
         config = {**model_config, **data_config}
         print(get_model_weights_name(config, experiment_name) + '.pth')
 
-# def set_epochs(experiment_name):
-#     print('RESETTING EPOCH')
-#     from ruamel.yaml import YAML
-#     from pathlib import Path
-#     ryaml = YAML()
-#     for p in Path(f'experiments/{experiment_name}/model_configs').glob("*.yaml"):
-#         data = ryaml.load(p)
-#         data['training']['epochs'] = 200
-#         ryaml.dump(data, p)
+def set_epochs(experiment_name):
+    print('RESETTING EPOCH')
+    from ruamel.yaml import YAML
+    from pathlib import Path
+    ryaml = YAML()
+    for p in Path(f'experiments/{experiment_name}/model_configs').glob("*.yaml"):
+        data = ryaml.load(p)
+        data['training']['epochs'] = 120
+        ryaml.dump(data, p)
 
-# check_paths('curriculum_sinus_tm')
-# set_epochs('varlen_mamba')
+#check_paths('all_models_ptb_xl')
+#set_epochs('all_models_ptb_xl')
 
 def group_configs(configs: list[str]):
      sort_key = lambda config: config.get('split_length', float('inf'))
