@@ -204,6 +204,9 @@ def get_scheduler(scheduler_name: str, optimizer_object: Optimizer, **kwargs) ->
         warmup_scheduler = LinearLR(optimizer_object, start_factor=warmup_start_factor, total_iters=warmup_epochs)
         cosine_scheduler = CosineAnnealingLR(optimizer_object, T_max=T_max - warmup_epochs, eta_min=eta_min)
         return SequentialLR(optimizer_object, schedulers=[warmup_scheduler, cosine_scheduler], milestones=[warmup_epochs])
+    elif scheduler_name == "ExponentialLR":
+        gamma = kwargs.get("gamma", 0.9)
+        return torch.optim.lr_scheduler.ExponentialLR(optimizer_object, gamma=gamma)
 
 
 def read_config(config_path: Path):
