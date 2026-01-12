@@ -426,7 +426,6 @@ class PTBXLLengthDataset(LengthExperimentDataset):
         self.original_sampling_frequency = original_sampling_frequency
         self.n_folds_requested = n_folds
         self.lead_index = lead_index
-        self.dataset_type = "ptb_xl"
         self._target_sampling_rate = noise_factory.sampling_rate
         assert self._target_sampling_rate == 360, "PTB-XL currently resamples to 360 Hz"
         self._validate_split_length(split_length)
@@ -449,6 +448,7 @@ class PTBXLLengthDataset(LengthExperimentDataset):
             save_clean_samples=save_clean_samples,
         )
 
+        self.dataset_type = "ptb_xl"
         # Ensure __len__ reflects actual number of cached samples
         if self.samples is None:
             raise RuntimeError("PTB-XL samples did not load correctly")
