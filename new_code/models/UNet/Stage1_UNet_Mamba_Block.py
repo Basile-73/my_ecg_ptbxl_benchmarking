@@ -135,21 +135,44 @@ class conv_3_block_UP(nn.Module):
 
 
 class UNetMambaBlock(nn.Module):#库中的torch.nn.Module模块
-    def __init__(self, in_channels=1, input_length=3600, d_state=256, d_conv=4, expand=4, bidirectional=False):
+    def __init__(self, in_channels=1, input_length=3600, d_state=256, d_conv=4,
+                 expand=4, bidirectional=False, channel_progression=None, d_intermediate=0, mamba_type='Mamba1', n_heads=1, n_blocks=1):
         super(UNetMambaBlock, self).__init__()
 
-        self.conv1=conv_3_block_DW( 1, 16, kernel_size_L=1,kernel_size_W=25,stride=1)
-        self.conv2=conv_3_block_DW(16, 32, kernel_size_L=1,kernel_size_W=15,stride=1)
-        self.conv3=conv_3_block_DW(32, 48, kernel_size_L=1,kernel_size_W=5,stride=1)
+        if channel_progression is None:
+            channel_progression = [16, 32, 48]
 
-        self.conv4=conv_3_block(48, 48, kernel_size_L=1,kernel_size_W=3,stride=1)
-        self.mamba_layer = ResidualMambaBlockLayer(48, d_state=d_state, d_conv=d_conv, expand=expand)
 
-        self.conv5=conv_3_block_UP(48, 32, kernel_size_L=1,kernel_size_W=5,stride=1)
-        self.conv6=conv_3_block_UP(32, 16, kernel_size_L=1,kernel_size_W=15,stride=1)
-        self.conv7=conv_3_block_UP(16, 16, kernel_size_L=1,kernel_size_W=25,stride=1)
+        assert len(channel_progression) == 3, "channel_progression must have exactly 3 values"
+        c1, c2, c3 = channel_progression
 
-        self.conv1m1 = nn.Conv2d(in_channels=16, out_channels=1, kernel_size=(1,1),padding=0)
+        self.conv1=conv_3_block_DW(in_channels, c1, kernel_size_L=1,kernel_size_W=25,stride=1)
+        self.conv2=conv_3_block_DW(c1, c2, kernel_size_L=1,kernel_size_W=15,stride=1)
+        self.conv3=conv_3_block_DW(c2, c3, kernel_size_L=1,kernel_size_W=5,stride=1)
+
+        self.conv4=conv_3_block(c3, c3, kernel_size_L=1,kernel_size_W=3,stride=1)
+
+
+        headdim = (expand * c3) // n_heads
+
+        self.mamba_layers = nn.ModuleList(
+            ResidualMambaBlockLayer(
+                c3,
+                d_state=d_state,
+                d_conv=d_conv,
+                expand=expand,
+                d_intermediate=d_intermediate,
+                mamba_type=mamba_type,
+                headdim=headdim,
+            )
+            for _ in range(n_blocks)
+        )
+
+        self.conv5=conv_3_block_UP(c3, c2, kernel_size_L=1,kernel_size_W=5,stride=1)
+        self.conv6=conv_3_block_UP(c2, c1, kernel_size_L=1,kernel_size_W=15,stride=1)
+        self.conv7=conv_3_block_UP(c1, c1, kernel_size_L=1,kernel_size_W=25,stride=1)
+
+        self.conv1m1 = nn.Conv2d(in_channels=c1, out_channels=1, kernel_size=(1,1),padding=0)
 
         self.avepool1 = nn.AvgPool2d((1, 5), stride=5)
         self.avepool2 = nn.AvgPool2d((1, 2), stride=2)
@@ -170,7 +193,8 @@ class UNetMambaBlock(nn.Module):#库中的torch.nn.Module模块
         x1_6 = self.avepool3(x1_5)
 
         x2 = self.conv4(x1_6)
-        x2 = self.mamba_layer(x2)
+        for layer in self.mamba_layers:
+            x2 = layer(x2)
 
         x2_1 = self.up1(x2)
         x2_1 = torch.cat((x2_1, x1_5), 1)
@@ -187,5 +211,5 @@ class UNetMambaBlock(nn.Module):#库中的torch.nn.Module模块
 
 
 # device = torch.device("cuda" if torch.cuda.is_available() else "cpu") # PyTorch v0.4.0
-# model = UNet(bidirectional=True).to(device)
+# model = UNetMambaBlock(bidirectional=True, mamba_type='Mamba1', n_heads=4, n_blocks=3).to(device)
 # summary(model, input_size=(1, 1, 3600))

@@ -33,6 +33,11 @@ def get_model(model_type: str, **kwargs):
     d_state = mamba_params.get('d_state', 256)
     d_conv = mamba_params.get('d_conv', 4)
     expand = mamba_params.get('expand', 4)
+    d_intermediate = mamba_params.get('d_intermediate', 0)
+    mamba_type = mamba_params.get('mamba_type', 'Mamba1')
+    n_heads = mamba_params.get('n_heads', 1)
+    channel_progression = mamba_params.get('channel_progression', [16, 32, 48])
+    n_blocks = mamba_params.get('n_blocks', 1)
 
     if model_type == "imunet":
         from models.IMUnet.Stage1_IMUnet import IMUnet
@@ -61,7 +66,9 @@ def get_model(model_type: str, **kwargs):
     elif model_type == "unet_mamba_block":
         from models.UNet.Stage1_UNet_Mamba_Block import UNetMambaBlock
         sequence_length = kwargs.get('sequence_length')
-        return UNetMambaBlock(input_length=sequence_length, d_state=d_state, d_conv=d_conv, expand=expand)
+        return UNetMambaBlock(input_length=sequence_length, d_state=d_state, d_conv=d_conv, expand=expand,
+                              channel_progression=channel_progression, d_intermediate=d_intermediate,
+                              mamba_type=mamba_type, n_heads=n_heads, n_blocks=n_blocks)
     elif model_type == "mecge":
         from models.MECGE.MECGE import MECGE
         with open('models/MECGE/config/MECGE_phase.yaml') as f:
@@ -197,6 +204,9 @@ def get_scheduler(scheduler_name: str, optimizer_object: Optimizer, **kwargs) ->
         warmup_scheduler = LinearLR(optimizer_object, start_factor=warmup_start_factor, total_iters=warmup_epochs)
         cosine_scheduler = CosineAnnealingLR(optimizer_object, T_max=T_max - warmup_epochs, eta_min=eta_min)
         return SequentialLR(optimizer_object, schedulers=[warmup_scheduler, cosine_scheduler], milestones=[warmup_epochs])
+    elif scheduler_name == "ExponentialLR":
+        gamma = kwargs.get("gamma", 0.9)
+        return torch.optim.lr_scheduler.ExponentialLR(optimizer_object, gamma=gamma)
 
 
 def read_config(config_path: Path):
