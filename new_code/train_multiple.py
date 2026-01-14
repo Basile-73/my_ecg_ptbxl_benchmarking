@@ -17,18 +17,18 @@ def check_paths(experiment_name):
         config = {**model_config, **data_config}
         print(get_model_weights_name(config, experiment_name) + '.pth')
 
-# def set_epochs(experiment_name):
-#     print('RESETTING EPOCH')
-#     from ruamel.yaml import YAML
-#     from pathlib import Path
-#     ryaml = YAML()
-#     for p in Path(f'experiments/{experiment_name}/model_configs').glob("*.yaml"):
-#         data = ryaml.load(p)
-#         data['training']['epochs'] = 200
-#         ryaml.dump(data, p)
+def set_epochs(experiment_name):
+    print('RESETTING EPOCH')
+    from ruamel.yaml import YAML
+    from pathlib import Path
+    ryaml = YAML()
+    for p in Path(f'experiments/{experiment_name}/model_configs').glob("*.yaml"):
+        data = ryaml.load(p)
+        data['training']['epochs'] = 1
+        ryaml.dump(data, p)
 
-# check_paths('curriculum_sinus_tm')
-# set_epochs('varlen_mamba')
+# check_paths('NEXT_mamba_synthetic')
+# set_epochs('NEXT_mamba_synthetic')
 
 def group_configs(configs: list[str]):
      sort_key = lambda config: config.get('split_length', float('inf'))
@@ -94,6 +94,26 @@ def main(experiment_name):
             traceback.print_exc()
             continue  # Continue to the next configuration
 
+    for config in mamba_configs:
+        model_name = get_model_weights_name(config, experiment_name)
+        print(f'Training model: {model_name}')
+        config_path = save_config(config, now_str, model_name)
+
+        pre_trained_weights_path = config["model"].get("pre_trained_weights_path", None)
+        seed = config['model'].get('seed', 42)
+        try:
+            trainer = MambaTrainer(
+                config_path=config_path,
+                experiment_name=experiment_name,
+                pre_trained_weights_path=pre_trained_weights_path,
+                seed=seed
+            )
+            trainer.train()
+        except Exception as e:
+            print(f"Error occurred while training {model_name}: {str(e)}")
+            traceback.print_exc()
+            continue
+
     for config in stage_2_configs:
         model_name = get_model_weights_name(config, experiment_name)
         print(f'Training model: {model_name}')
@@ -108,26 +128,6 @@ def main(experiment_name):
                 stage1_type=stage_1_type,
                 stage1_weights_path=stage_1_weights_path,
                 experiment_name=experiment_name,
-                seed=seed
-            )
-            trainer.train()
-        except Exception as e:
-            print(f"Error occurred while training {model_name}: {str(e)}")
-            traceback.print_exc()
-            continue
-
-    for config in mamba_configs:
-        model_name = get_model_weights_name(config, experiment_name)
-        print(f'Training model: {model_name}')
-        config_path = save_config(config, now_str, model_name)
-
-        pre_trained_weights_path = config["model"].get("pre_trained_weights_path", None)
-        seed = config['model'].get('seed', 42)
-        try:
-            trainer = MambaTrainer(
-                config_path=config_path,
-                experiment_name=experiment_name,
-                pre_trained_weights_path=pre_trained_weights_path,
                 seed=seed
             )
             trainer.train()
