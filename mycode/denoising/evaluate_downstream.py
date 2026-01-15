@@ -181,6 +181,8 @@ def denoise_12lead_signal(noisy_12lead, denoising_model, device, batch_size=32,
     else:
         print(f"  Using standard forward pass for {n_leads}-lead processing")
 
+    # TODO: resample from classification sampling frequency to denoising sampling frequency
+
     # Process each lead
     for lead_idx in range(n_leads):
         lead_data = noisy_12lead[:, :, lead_idx:lead_idx+1]  # (n_samples, n_timesteps, 1)
@@ -199,12 +201,12 @@ def denoise_12lead_signal(noisy_12lead, denoising_model, device, batch_size=32,
                     # Branch early to skip unnecessary Stage1 computation
                     if is_mecge:
                         # Use original noisy signal for MECGE, bypassing Stage1 entirely
-                        denoised_batch = denoising_model.denoising(batch_tensor)  # (batch, 1, 1, time)
+                        denoised_batch = denoising_model.denoising(batch_tensor)  # (batch, 1, 1, time) # TODO: Update MECGE with feeding
                     else:
                         # Standard Stage2 model: need to concatenate noisy signal with Stage1 output
                         # 1. Get Stage1 output using appropriate inference method
                         if is_stage1_mecge:
-                            stage1_output = stage1_model.denoising(batch_tensor)  # (batch, 1, 1, time)
+                            stage1_output = stage1_model.denoising(batch_tensor)  # (batch, 1, 1, time) # TODO: Update MECGE with feeding
                         else:
                             stage1_output = stage1_model(batch_tensor)  # (batch, 1, 1, time)
 
@@ -216,13 +218,15 @@ def denoise_12lead_signal(noisy_12lead, denoising_model, device, batch_size=32,
                 else:
                     # For Stage1: direct pass using appropriate inference method
                     if is_mecge:
-                        denoised_batch = denoising_model.denoising(batch_tensor)  # (batch, 1, 1, time)
+                        denoised_batch = denoising_model.denoising(batch_tensor)  # (batch, 1, 1, time) # TODO: Update MECGE with feeding
                     else:
                         denoised_batch = denoising_model(batch_tensor)  # (batch, 1, 1, time)
 
                 denoised_batch = denoised_batch.squeeze(1).permute(0, 2, 1).cpu().numpy()
 
             denoised[batch_start:batch_end, :, lead_idx] = denoised_batch[:, :, 0]
+
+    # TODO: resample back to classification sampling frequency
 
     return denoised
 
@@ -357,7 +361,7 @@ def evaluate_downstream(config_path='code/denoising/configs/denoising_config.yam
     with open(os.path.join(base_exp_path, 'data', 'standard_scaler.pkl'), 'rb') as f:
         scaler = pickle.load(f)
 
-    X_val_12lead = apply_standardizer(X_val_12lead, scaler)
+    X_val_12lead = apply_standardizer(X_val_12lead, scaler) # TODO: Apply denoising standardizer here + denoising pre-processing
     print("✓ Applied classification standardizer (StandardScaler)")
 
     # Store clean version
@@ -421,7 +425,7 @@ def evaluate_downstream(config_path='code/denoising/configs/denoising_config.yam
 
         # Load model
         is_stage2 = model_type.lower() in ['stage2', 'drnet']
-        model = get_model(
+        model = get_model( # TODO: Update get_model
             model_type,
             input_length=X_val_12lead.shape[1],  # Use classification input length
             is_stage2=is_stage2
@@ -459,7 +463,7 @@ def evaluate_downstream(config_path='code/denoising/configs/denoising_config.yam
                             # Fallback: try to find from config
                             stage1_type = stage1_name.lower()
 
-                        stage1_model = get_model(
+                        stage1_model = get_model( # TODO: Update get_model
                             stage1_type,
                             input_length=X_val_12lead.shape[1],
                             is_stage2=False
@@ -583,6 +587,9 @@ def evaluate_downstream(config_path='code/denoising/configs/denoising_config.yam
             stage1_model=stage1_model
         )
 
+        # TODO: Revert denoising standardization applied earlyer
+        # TODO: Apply classification standardization
+
         # Classify with each classifier
         for clf_name, clf_model in classification_models.items():
             print(f"  Classifying with {clf_name}...")
@@ -636,7 +643,7 @@ def plot_downstream_results(results_df, output_folder):
     """
 
     # Comprehensive color map for consistent styling across all plots
-    color_map = {
+    color_map = { # TODO: Update colormap
         'noisy_input': '#808080',  # Grey (baseline)
         'fcn': '#aec7e8',         # Light blue (Stage1)
         'drnet_fcn': '#1f77b4',   # Dark blue (Stage2)
@@ -854,7 +861,7 @@ Examples:
   python evaluate_downstream.py --base-exp exp1 --classification-fs 500 --classifiers all
         """
     )
-    parser.add_argument('--config', type=str, default='code/denoising/configs/denoising_config.yaml',
+    parser.add_argument('--config', type=str, default='mycode/denoising/configs/mini_run.yaml',
                        help='Path to denoising config file')
     parser.add_argument('--base-exp', type=str, default='exp0',
                        help='Name of base classification experiment')
