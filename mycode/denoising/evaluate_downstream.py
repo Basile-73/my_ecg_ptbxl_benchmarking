@@ -29,7 +29,7 @@ sys.path.insert(0, os.path.join(script_dir, '../classification'))
 sys.path.insert(0, os.path.join(script_dir, '../../ecg_noise/source'))
 
 from denoising_utils.utils import get_model
-from denoising_utils.preprocessing import normalize_signals, bandpass_filter
+from denoising_utils.preprocessing import normalize_signals, bandpass_filter, normalize_robust
 from ecg_noise_factory.noise import NoiseFactory
 from utils.utils import load_dataset, apply_standardizer
 
@@ -280,7 +280,7 @@ def compute_bootstrap_ci(y_true, y_pred, n_bootstraps=100, confidence_level=0.95
 
 
 def evaluate_downstream(config_path='code/denoising/configs/denoising_config.yaml', base_exp='exp0',
-                       classification_sampling_rate=100, classifier_names=None):
+                       classification_sampling_rate=500, denoising_sampling_rate=360, classifier_names=None):
     """
     Main evaluation function.
 
@@ -329,6 +329,7 @@ def evaluate_downstream(config_path='code/denoising/configs/denoising_config.yam
 
     datafolder = config['datafolder']
     val_fold = config['val_fold']
+    test_fold = config['test_fold']
 
     # Load PTB-XL data at classification sampling rate
     data, raw_labels = load_dataset(datafolder, classification_sampling_rate)
@@ -336,6 +337,7 @@ def evaluate_downstream(config_path='code/denoising/configs/denoising_config.yam
 
     # Extract validation fold
     X_val_12lead = data[raw_labels.strat_fold == val_fold]
+    X_train_12lead = data[~raw_labels.strat_fold.isin([val_fold, test_fold])]
     print(f"Validation samples: {len(X_val_12lead)}")
     print(f"Shape: {X_val_12lead[0].shape} (timesteps, channels)")
 
@@ -357,12 +359,18 @@ def evaluate_downstream(config_path='code/denoising/configs/denoising_config.yam
     n_classes = y_val.shape[1]
     print(f"Number of classes: {n_classes}")
 
-    # Load and apply classification standardizer
-    with open(os.path.join(base_exp_path, 'data', 'standard_scaler.pkl'), 'rb') as f:
-        scaler = pickle.load(f)
+    # Load and apply classification standardizer # TODO bring this back later
+    # with open(os.path.join(base_exp_path, 'data', 'standard_scaler.pkl'), 'rb') as f:
+    #     scaler = pickle.load(f)
+    #  # TODO: Apply denoising standardizer here + denoising pre-processing
 
-    X_val_12lead = apply_standardizer(X_val_12lead, scaler) # TODO: Apply denoising standardizer here + denoising pre-processing
-    print("✓ Applied classification standardizer (StandardScaler)")
+    # compute robust statistics from training data for normalization
+    median = np.median(X_train_12lead)
+    iqr = np.percentile(X_train_12lead, 75) - np.percentile(X_train_12lead, 25)
+    X_val_12lead = normalize_robust(X_val_12lead, median, iqr)
+    X_val_12lead = bandpass_filter(X_val_12lead, fs=classification_sampling_rate)
+
+    print("✓ Applied denoising standardizer (Robust Normalization)")
 
     # Store clean version
     X_val_clean = X_val_12lead.copy()
