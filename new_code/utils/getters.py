@@ -71,7 +71,8 @@ def get_model(model_type: str, **kwargs):
                               mamba_type=mamba_type, n_heads=n_heads, n_blocks=n_blocks)
     elif model_type == "mecge":
         from models.MECGE.MECGE import MECGE
-        with open('models/MECGE/config/MECGE_phase.yaml') as f:
+        config_path = Path(__file__).parent.parent / 'models' / 'MECGE' / 'config' / 'MECGE_phase.yaml'
+        with open(config_path) as f:
             mecge_config = yaml.safe_load(f)
         return MECGE(mecge_config)
     elif model_type == "drnet":
