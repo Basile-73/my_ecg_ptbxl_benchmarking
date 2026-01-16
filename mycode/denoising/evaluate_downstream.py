@@ -28,10 +28,13 @@ sys.path.insert(0, script_dir)
 sys.path.insert(0, os.path.join(script_dir, '../classification'))
 sys.path.insert(0, os.path.join(script_dir, '../../ecg_noise/source'))
 
-from denoising_utils.utils import get_model
+
 from denoising_utils.preprocessing import normalize_signals, bandpass_filter, normalize_robust
 from ecg_noise_factory.noise import NoiseFactory
 from utils.utils import load_dataset, apply_standardizer
+
+sys.path.insert(0, os.path.join(script_dir, '../../'))
+from new_code.utils.getters import get_model
 
 
 def load_config(config_path='code/denoising/configs/denoising_config.yaml'):
@@ -114,7 +117,7 @@ def load_classification_model(model_name, base_exp_folder, n_classes, input_shap
             del sys.modules['models.fastai_model']
 
         # Now import
-        from models.fastai_model import fastai_model
+        from classification_models.fastai_model import fastai_model
 
         model_path = os.path.join(base_exp_folder, 'models', model_name)
 
@@ -368,7 +371,7 @@ def evaluate_downstream(config_path='code/denoising/configs/denoising_config.yam
     median = np.median(X_train_12lead)
     iqr = np.percentile(X_train_12lead, 75) - np.percentile(X_train_12lead, 25)
     X_val_12lead = normalize_robust(X_val_12lead, median, iqr)
-    X_val_12lead = bandpass_filter(X_val_12lead, fs=classification_sampling_rate)
+    X_val_12lead = bandpass_filter(X_val_12lead, fs=classification_sampling_rate) # TODO: Make sure this is not applied twice
 
     print("✓ Applied denoising standardizer (Robust Normalization)")
 
@@ -424,18 +427,20 @@ def evaluate_downstream(config_path='code/denoising/configs/denoising_config.yam
         model_type = model_config['type']
 
         # Check if model exists
-        model_folder = os.path.join(denoising_exp_folder, 'models', model_name)
-        model_path = os.path.join(model_folder, 'best_model.pth')
+        model_path = model_config['model_path']
 
         if not os.path.exists(model_path):
             print(f"⚠️  Model {model_name} not found, skipping...")
             continue
 
         # Load model
-        is_stage2 = model_type.lower() in ['stage2', 'drnet']
+        is_stage2 = model_config['is_stage_2']
+        input_length = denoising_sampling_rate * 10
+
         model = get_model( # TODO: Update get_model
             model_type,
-            input_length=X_val_12lead.shape[1],  # Use classification input length
+            sequence_length=input_length,  # Use denoising input length
+            model_config = model_config,
             is_stage2=is_stage2
         )
 
@@ -869,7 +874,7 @@ Examples:
   python evaluate_downstream.py --base-exp exp1 --classification-fs 500 --classifiers all
         """
     )
-    parser.add_argument('--config', type=str, default='mycode/denoising/configs/mini_run.yaml',
+    parser.add_argument('--config', type=str, default='mycode/denoising/configs/new_run.yaml',
                        help='Path to denoising config file')
     parser.add_argument('--base-exp', type=str, default='exp0',
                        help='Name of base classification experiment')
