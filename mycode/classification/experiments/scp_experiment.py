@@ -95,14 +95,14 @@ class SCP_Experiment():
             n_classes = self.Y.shape[1]
             # load respective model
             if modeltype == 'WAVELET':
-                from models.wavelet import WaveletModel
+                from classification_models.wavelet import WaveletModel
                 model = WaveletModel(modelname, n_classes, self.sampling_frequency, mpath, self.input_shape, **modelparams)
             elif modeltype == "fastai_model":
-                from models.fastai_model import fastai_model
+                from classification_models.fastai_model import fastai_model
                 model = fastai_model(modelname, n_classes, self.sampling_frequency, mpath, self.input_shape, **modelparams)
             elif modeltype == "YOUR_MODEL_TYPE":
                 # YOUR MODEL GOES HERE!
-                from models.your_model import YourModel
+                from classification_models.your_model import YourModel
                 model = YourModel(modelname, n_classes, self.sampling_frequency, mpath, self.input_shape, **modelparams)
             else:
                 assert(True)

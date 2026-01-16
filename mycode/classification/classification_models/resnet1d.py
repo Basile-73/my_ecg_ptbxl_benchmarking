@@ -4,7 +4,7 @@ import torch.nn.functional as F
 import math
 
 from torch.nn import Flatten
-from models.basic_conv1d import create_head1d
+from classification_models.basic_conv1d import create_head1d
 ###############################################################################################
 # Standard resnet
 
