@@ -342,6 +342,7 @@ def evaluate_downstream(config_path='code/denoising/configs/denoising_config.yam
 
     # Extract validation fold
     X_val_12lead = data[raw_labels.strat_fold == val_fold]
+    X_val_12lead_original = X_val_12lead.copy()
     X_train_12lead = data[~raw_labels.strat_fold.isin([val_fold, test_fold])]
     print(f"Validation samples: {len(X_val_12lead)}")
     print(f"Shape: {X_val_12lead[0].shape} (timesteps, channels)")
@@ -538,7 +539,11 @@ def evaluate_downstream(config_path='code/denoising/configs/denoising_config.yam
     print("\n--- Baseline: Clean Data ---")
     for clf_name, clf_model in classification_models.items():
         print(f"\nClassifying with {clf_name}...")
-        y_pred_clean = clf_model.predict(X_val_clean)
+        # revert normalization and add classification pre-processing
+        with open(os.path.join(base_exp_path, 'data', 'standard_scaler.pkl'), 'rb') as f:
+            scaler = pickle.load(f)
+        X_val_clean_original_p = apply_standardizer(X_val_12lead_original, scaler)
+        y_pred_clean = clf_model.predict(X_val_clean_original_p)
 
         auc_point = roc_auc_score(y_val, y_pred_clean, average='macro')
         ci = compute_bootstrap_ci(y_val, y_pred_clean, n_bootstraps=100)
@@ -558,7 +563,13 @@ def evaluate_downstream(config_path='code/denoising/configs/denoising_config.yam
     print("\n--- Baseline: Noisy Data (no denoising) ---")
     for clf_name, clf_model in classification_models.items():
         print(f"\nClassifying with {clf_name}...")
-        y_pred_noisy = clf_model.predict(X_val_noisy)
+        # revert normalization and add classification pre-processing
+        X_val_noisy_denorm = X_val_noisy.copy()
+        X_val_noisy_denorm = denormalize_robust(X_val_noisy_denorm, median, iqr)
+        with open(os.path.join(base_exp_path, 'data', 'standard_scaler.pkl'), 'rb') as f:
+            scaler = pickle.load(f)
+        X_val_noisy_denorm = apply_standardizer(X_val_noisy_denorm, scaler)
+        y_pred_noisy = clf_model.predict(X_val_noisy_denorm)
 
         auc_point = roc_auc_score(y_val, y_pred_noisy, average='macro')
         ci = compute_bootstrap_ci(y_val, y_pred_noisy, n_bootstraps=100)
