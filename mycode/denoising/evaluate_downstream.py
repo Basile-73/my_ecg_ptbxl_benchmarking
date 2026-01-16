@@ -162,7 +162,7 @@ def denoise_12lead_signal(noisy_12lead, denoising_model, device,
     is_stage2 = stage1_model is not None
 
     # Detect if main denoising model is MECGE
-    is_mecge = hasattr(denoising_model, 'denoising')
+    is_mecge = hasattr(denoising_model, 'denoising') # refactore MECGE implementation does not have denoising method.
 
     if is_stage2:
         stage1_model.eval()
@@ -453,7 +453,7 @@ def evaluate_downstream(config_path='code/denoising/configs/denoising_config.yam
         # For Stage2 models, also load the corresponding Stage1 model
         stage1_model = None
         if is_stage2: # TODO update this section
-            stage1_name = model_config.get('stage1_model', None)
+            stage1_name = model_config.get('stage_1_type', None)
             if stage1_name:
                 # Check if we already loaded this Stage1 model
                 if stage1_name in stage1_models_cache:
@@ -461,26 +461,17 @@ def evaluate_downstream(config_path='code/denoising/configs/denoising_config.yam
                     print(f"  Using cached Stage1 model: {stage1_name}")
                 else:
                     # Load the Stage1 model
-                    stage1_model_path = os.path.join(
-                        denoising_exp_folder, 'models', stage1_name, 'best_model.pth'
-                    )
+                    stage1_model_path = model_config['stage_1_weights_path']
                     if os.path.exists(stage1_model_path):
                         # Determine Stage1 model type from its name or config
                         # IMPORTANT: Check for 'imunet' BEFORE 'unet' since 'imunet' contains 'unet'
-                        stage1_type = stage1_name.lower()
-                        if 'imunet' in stage1_type:
-                            stage1_type = 'imunet'
-                        elif 'fcn' in stage1_type:
-                            stage1_type = 'fcn'
-                        elif 'unet' in stage1_type:
-                            stage1_type = 'unet'
-                        else:
-                            # Fallback: try to find from config
-                            stage1_type = stage1_name.lower()
+                        stage1_type = model_config['stage_1_type']
+                        input_length = denoising_sampling_rate * 10
 
                         stage1_model = get_model( # TODO: Update get_model
                             stage1_type,
-                            input_length=X_val_12lead.shape[1],
+                            sequence_length=input_length,
+                            model_config=model_config, # access mamba_params for stage 1 model
                             is_stage2=False
                         )
                         stage1_model.load_state_dict(torch.load(stage1_model_path, map_location=device, weights_only=True))
