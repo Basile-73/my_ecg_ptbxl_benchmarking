@@ -374,7 +374,8 @@ def evaluate_downstream(config_path='code/denoising/configs/denoising_config.yam
     median = np.median(X_train_12lead)
     iqr = np.percentile(X_train_12lead, 75) - np.percentile(X_train_12lead, 25)
     X_val_12lead = normalize_robust(X_val_12lead, median, iqr)
-    X_val_12lead = bandpass_filter(X_val_12lead, fs=classification_sampling_rate) # TODO: Make sure this is not applied twice
+    if config.get('bandpass', True):
+        X_val_12lead = bandpass_filter(X_val_12lead, fs=classification_sampling_rate) # TODO: Make sure this is not applied twice
 
     print("✓ Applied denoising standardizer (Robust Normalization)")
 
@@ -677,10 +678,16 @@ def plot_downstream_results(results_df, output_folder):
         'imunet_origin': '#9467bd',    # Purple
         'mecge_phase': '#C91CB5',
         'imunet_mamba_bn': '#ff7f0e',  # Orange
-        'imunet_mamba_bottleneck': '#1C8AC9',  # Orange
-        'imunet_mamba_up': '#17becf',  # Cyan/Teal
-        'imunet_mamba_early': '#391CC9', # Magenta/Pink
-        'imunet_mamba_late': '#bcbd22',  # Yellow-green
+        # 'imunet_mamba_bottleneck': '#1C8AC9',  # Orange
+        # 'imunet_mamba_up': '#17becf',  # Cyan/Teal
+        # 'imunet_mamba_early': '#391CC9', # Magenta/Pink
+        # 'imunet_mamba_late': '#bcbd22',  # Yellow-green
+        'mamba1_3blocks': '#8ecae6',      # light blue
+        'drnet_mamba1_3blocks': '#005f73',# dark blue
+        'mamba2_3blocks': '#94d2bd',
+        'drnet_mamba2_3blocks': '#0a9396',# dark cyan
+        'ant_drnn': '#ffbb78',
+        'chiang_dae': '#ff7f0e',
     }
 
     sns.set_style("whitegrid")
