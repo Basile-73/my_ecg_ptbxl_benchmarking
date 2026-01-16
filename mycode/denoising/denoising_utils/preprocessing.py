@@ -297,3 +297,11 @@ def normalize_signals(data: np.ndarray, method: str = 'standard',
             raise ValueError(f"Unknown axis strategy: {axis_strategy}")
 
     return normalized, stats
+
+def normalize_robust(X:np.ndarray, median:float, iqr:float):
+    X_norm = (X - median) / (iqr + 1e-8)
+    return X_norm
+
+def denormalize_robust(X_norm:np.ndarray, median:float, iqr:float):
+    X = X_norm * (iqr + 1e-8) + median
+    return X

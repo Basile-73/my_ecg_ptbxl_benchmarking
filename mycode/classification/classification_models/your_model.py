@@ -1,4 +1,4 @@
-from models.base_model import ClassificationModel
+from classification_models.base_model import ClassificationModel
 
 class YourModel(ClassificationModel):
     def __init__(self, name, n_classes,  sampling_frequency, outputfolder, input_shape):

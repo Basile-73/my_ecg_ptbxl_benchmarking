@@ -223,7 +223,7 @@ class NoiseRobustnessExperiment():
 
         # Determine model type based on name
         if modelname.startswith('fastai_'):
-            from models.fastai_model import fastai_model
+            from classification_models.fastai_model import fastai_model
 
             # Create model instance (we'll load weights, so parameters don't matter much)
             model = fastai_model(
@@ -240,7 +240,7 @@ class NoiseRobustnessExperiment():
             return predictions
 
         elif modelname.startswith('wavelet_'):
-            from models.wavelet import WaveletModel
+            from classification_models.wavelet import WaveletModel
 
             # Create model instance
             model = WaveletModel(

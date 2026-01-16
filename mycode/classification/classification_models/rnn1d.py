@@ -4,7 +4,7 @@ import torch.nn.functional as F
 import math
 
 from fastai.vision.all import Lambda, listify
-from models.basic_conv1d import bn_drop_lin
+from classification_models.basic_conv1d import bn_drop_lin
 
 class AdaptiveConcatPoolRNN(nn.Module):
     def __init__(self, bidirectional):
@@ -14,7 +14,7 @@ class AdaptiveConcatPoolRNN(nn.Module):
         #input shape bs, ch, ts
         t1 = nn.AdaptiveAvgPool1d(1)(x)
         t2 = nn.AdaptiveMaxPool1d(1)(x)
-        
+
         if(self.bidirectional is False):
             t3 = x[:,:,-1]
         else:
@@ -39,29 +39,29 @@ class RNN1d(nn.Sequential):
         layers_tmp.append(Lambda(lambda x: x.transpose(1,2)))
 
         layers_head =[]
-        
+
         layers_head.append(AdaptiveConcatPoolRNN(bidirectional))
 
         #classifier
         nf = 3*hidden_dim if bidirectional is False else 6*hidden_dim
         lin_ftrs_head = [nf, num_classes] if lin_ftrs_head is None else [nf] + lin_ftrs_head + [num_classes]
         ps_head = listify(ps_head)
-        if len(ps_head)==1: 
+        if len(ps_head)==1:
             ps_head = [ps_head[0]/2] * (len(lin_ftrs_head)-2) + ps_head
         actns = [nn.ReLU(inplace=True) if act_head=="relu" else nn.ELU(inplace=True)] * (len(lin_ftrs_head)-2) + [None]
-    
+
         for ni,no,p,actn in zip(lin_ftrs_head[:-1],lin_ftrs_head[1:],ps_head,actns):
             layers_head+=bn_drop_lin(ni,no,bn,p,actn)
         layers_head=nn.Sequential(*layers_head)
         layers_tmp.append(layers_head)
 
         super().__init__(*layers_tmp)
-    
+
     def get_layer_groups(self):
         return (self[-1],)
-    
+
     def get_output_layer(self):
         return self[-1][-1]
-    
+
     def set_output_layer(self,x):
         self[-1][-1] = x

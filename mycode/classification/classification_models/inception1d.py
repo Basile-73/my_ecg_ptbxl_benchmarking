@@ -4,7 +4,7 @@ import torch.nn.functional as F
 import math
 from typing import Optional
 
-from models.basic_conv1d import AdaptiveConcatPool1d, create_head1d
+from classification_models.basic_conv1d import AdaptiveConcatPool1d, create_head1d
 
 ########################################################################################################
 # Inception time inspired by https://github.com/hfawaz/InceptionTime/blob/master/classifiers/inception.py and https://github.com/tcapelle/TimeSeries_fastai/blob/master/inception.py

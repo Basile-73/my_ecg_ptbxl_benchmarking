@@ -1,23 +1,23 @@
-from models.timeseries_utils import *
+from classification_models.timeseries_utils import *
 
 from fastai.vision.all import *
 from fastai.callback.tracker import SaveModelCallback
 from fastai.callback.training import GradientClip as GradientClipping
 
 # Re-import ToTensor after fastai imports to avoid name conflict
-from models.timeseries_utils import ToTensor, TimeseriesDatasetCrops
+from classification_models.timeseries_utils import ToTensor, TimeseriesDatasetCrops
 
 from pathlib import Path
 from functools import partial
 
-from models.resnet1d import resnet1d18,resnet1d34,resnet1d50,resnet1d101,resnet1d152,resnet1d_wang,resnet1d,wrn1d_22
-from models.xresnet1d import xresnet1d18,xresnet1d34,xresnet1d50,xresnet1d101,xresnet1d152,xresnet1d18_deep,xresnet1d34_deep,xresnet1d50_deep,xresnet1d18_deeper,xresnet1d34_deeper,xresnet1d50_deeper
-from models.inception1d import inception1d
-from models.basic_conv1d import fcn,fcn_wang,schirrmeister,sen,basic1d,weight_init
-from models.rnn1d import RNN1d
+from classification_models.resnet1d import resnet1d18,resnet1d34,resnet1d50,resnet1d101,resnet1d152,resnet1d_wang,resnet1d,wrn1d_22
+from classification_models.xresnet1d import xresnet1d18,xresnet1d34,xresnet1d50,xresnet1d101,xresnet1d152,xresnet1d18_deep,xresnet1d34_deep,xresnet1d50_deep,xresnet1d18_deeper,xresnet1d34_deeper,xresnet1d50_deeper
+from classification_models.inception1d import inception1d
+from classification_models.basic_conv1d import fcn,fcn_wang,schirrmeister,sen,basic1d,weight_init
+from classification_models.rnn1d import RNN1d
 import math
 
-from models.base_model import ClassificationModel
+from classification_models.base_model import ClassificationModel
 import torch
 
 #for lrfind

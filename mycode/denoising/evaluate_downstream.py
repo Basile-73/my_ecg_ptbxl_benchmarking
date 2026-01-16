@@ -28,10 +28,13 @@ sys.path.insert(0, script_dir)
 sys.path.insert(0, os.path.join(script_dir, '../classification'))
 sys.path.insert(0, os.path.join(script_dir, '../../ecg_noise/source'))
 
-from denoising_utils.utils import get_model
-from denoising_utils.preprocessing import normalize_signals, bandpass_filter
+
+from denoising_utils.preprocessing import normalize_signals, bandpass_filter, normalize_robust, denormalize_robust
 from ecg_noise_factory.noise import NoiseFactory
 from utils.utils import load_dataset, apply_standardizer
+
+sys.path.insert(0, os.path.join(script_dir, '../../'))
+from new_code.utils.getters import get_model
 
 
 def load_config(config_path='code/denoising/configs/denoising_config.yaml'):
@@ -67,7 +70,7 @@ def resample_signal(signal_data, original_rate, target_rate):
             sig = signal_data[i, :, ch]
             # Calculate number of samples for target rate
             num_samples = int(len(sig) * target_rate / original_rate)
-            resampled_sig = scipy_signal.resample(sig, num_samples)
+            resampled_sig = scipy_signal.resample(sig, num_samples) # TODO check if using Fraction and resample_poly is better here.
             channels.append(resampled_sig)
 
         resampled.append(np.stack(channels, axis=1))
@@ -114,7 +117,7 @@ def load_classification_model(model_name, base_exp_folder, n_classes, input_shap
             del sys.modules['models.fastai_model']
 
         # Now import
-        from models.fastai_model import fastai_model
+        from classification_models.fastai_model import fastai_model
 
         model_path = os.path.join(base_exp_folder, 'models', model_name)
 
@@ -137,8 +140,9 @@ def load_classification_model(model_name, base_exp_folder, n_classes, input_shap
         sys.path = original_sys_path
 
 
-def denoise_12lead_signal(noisy_12lead, denoising_model, device, batch_size=32,
-                          stage1_model=None):
+def denoise_12lead_signal(noisy_12lead, denoising_model, device,
+                          classification_sf, denoising_sf,
+                          batch_size=32, stage1_model=None):
     """
     Denoise a 12-lead ECG signal by processing each lead independently.
 
@@ -153,13 +157,12 @@ def denoise_12lead_signal(noisy_12lead, denoising_model, device, batch_size=32,
         Denoised signal of same shape
     """
     n_samples, n_timesteps, n_leads = noisy_12lead.shape
-    denoised = np.zeros_like(noisy_12lead)
 
     denoising_model.eval()
     is_stage2 = stage1_model is not None
 
     # Detect if main denoising model is MECGE
-    is_mecge = hasattr(denoising_model, 'denoising')
+    is_mecge = hasattr(denoising_model, 'denoising') # refactore MECGE implementation does not have denoising method.
 
     if is_stage2:
         stage1_model.eval()
@@ -181,6 +184,10 @@ def denoise_12lead_signal(noisy_12lead, denoising_model, device, batch_size=32,
     else:
         print(f"  Using standard forward pass for {n_leads}-lead processing")
 
+    # Resample from classification_sf to denoising_sf
+    noisy_12lead = resample_signal(noisy_12lead, classification_sf, denoising_sf)
+    denoised = np.zeros_like(noisy_12lead)
+
     # Process each lead
     for lead_idx in range(n_leads):
         lead_data = noisy_12lead[:, :, lead_idx:lead_idx+1]  # (n_samples, n_timesteps, 1)
@@ -199,12 +206,12 @@ def denoise_12lead_signal(noisy_12lead, denoising_model, device, batch_size=32,
                     # Branch early to skip unnecessary Stage1 computation
                     if is_mecge:
                         # Use original noisy signal for MECGE, bypassing Stage1 entirely
-                        denoised_batch = denoising_model.denoising(batch_tensor)  # (batch, 1, 1, time)
+                        denoised_batch = denoising_model.denoising(batch_tensor)  # (batch, 1, 1, time) # TODO: Update MECGE with feeding
                     else:
                         # Standard Stage2 model: need to concatenate noisy signal with Stage1 output
                         # 1. Get Stage1 output using appropriate inference method
                         if is_stage1_mecge:
-                            stage1_output = stage1_model.denoising(batch_tensor)  # (batch, 1, 1, time)
+                            stage1_output = stage1_model.denoising(batch_tensor)  # (batch, 1, 1, time) # TODO: Update MECGE with feeding
                         else:
                             stage1_output = stage1_model(batch_tensor)  # (batch, 1, 1, time)
 
@@ -216,13 +223,15 @@ def denoise_12lead_signal(noisy_12lead, denoising_model, device, batch_size=32,
                 else:
                     # For Stage1: direct pass using appropriate inference method
                     if is_mecge:
-                        denoised_batch = denoising_model.denoising(batch_tensor)  # (batch, 1, 1, time)
+                        denoised_batch = denoising_model.denoising(batch_tensor)  # (batch, 1, 1, time) # TODO: Update MECGE with feeding
                     else:
                         denoised_batch = denoising_model(batch_tensor)  # (batch, 1, 1, time)
 
                 denoised_batch = denoised_batch.squeeze(1).permute(0, 2, 1).cpu().numpy()
 
             denoised[batch_start:batch_end, :, lead_idx] = denoised_batch[:, :, 0]
+
+    denoised = resample_signal(denoised, denoising_sf, classification_sf)
 
     return denoised
 
@@ -276,7 +285,7 @@ def compute_bootstrap_ci(y_true, y_pred, n_bootstraps=100, confidence_level=0.95
 
 
 def evaluate_downstream(config_path='code/denoising/configs/denoising_config.yaml', base_exp='exp0',
-                       classification_sampling_rate=100, classifier_names=None):
+                       classification_sampling_rate=500, classifier_names=None):
     """
     Main evaluation function.
 
@@ -325,6 +334,7 @@ def evaluate_downstream(config_path='code/denoising/configs/denoising_config.yam
 
     datafolder = config['datafolder']
     val_fold = config['val_fold']
+    test_fold = config['test_fold']
 
     # Load PTB-XL data at classification sampling rate
     data, raw_labels = load_dataset(datafolder, classification_sampling_rate)
@@ -332,6 +342,8 @@ def evaluate_downstream(config_path='code/denoising/configs/denoising_config.yam
 
     # Extract validation fold
     X_val_12lead = data[raw_labels.strat_fold == val_fold]
+    X_val_12lead_original = X_val_12lead.copy()
+    X_train_12lead = data[~raw_labels.strat_fold.isin([val_fold, test_fold])]
     print(f"Validation samples: {len(X_val_12lead)}")
     print(f"Shape: {X_val_12lead[0].shape} (timesteps, channels)")
 
@@ -353,12 +365,19 @@ def evaluate_downstream(config_path='code/denoising/configs/denoising_config.yam
     n_classes = y_val.shape[1]
     print(f"Number of classes: {n_classes}")
 
-    # Load and apply classification standardizer
-    with open(os.path.join(base_exp_path, 'data', 'standard_scaler.pkl'), 'rb') as f:
-        scaler = pickle.load(f)
+    # Load and apply classification standardizer # TODO bring this back later
+    # with open(os.path.join(base_exp_path, 'data', 'standard_scaler.pkl'), 'rb') as f:
+    #     scaler = pickle.load(f)
+    #  # TODO: Apply denoising standardizer here + denoising pre-processing
 
-    X_val_12lead = apply_standardizer(X_val_12lead, scaler)
-    print("✓ Applied classification standardizer (StandardScaler)")
+    # compute robust statistics from training data for normalization
+    median = np.median(X_train_12lead)
+    iqr = np.percentile(X_train_12lead, 75) - np.percentile(X_train_12lead, 25)
+    X_val_12lead = normalize_robust(X_val_12lead, median, iqr)
+    if config.get('bandpass', True):
+        X_val_12lead = bandpass_filter(X_val_12lead, fs=classification_sampling_rate) # TODO: Make sure this is not applied twice
+
+    print("✓ Applied denoising standardizer (Robust Normalization)")
 
     # Store clean version
     X_val_clean = X_val_12lead.copy()
@@ -412,18 +431,20 @@ def evaluate_downstream(config_path='code/denoising/configs/denoising_config.yam
         model_type = model_config['type']
 
         # Check if model exists
-        model_folder = os.path.join(denoising_exp_folder, 'models', model_name)
-        model_path = os.path.join(model_folder, 'best_model.pth')
+        model_path = model_config['model_path']
 
         if not os.path.exists(model_path):
             print(f"⚠️  Model {model_name} not found, skipping...")
             continue
 
         # Load model
-        is_stage2 = model_type.lower() in ['stage2', 'drnet']
+        is_stage2 = model_config['is_stage_2']
+        input_length = denoising_sampling_rate * 10
+
         model = get_model(
             model_type,
-            input_length=X_val_12lead.shape[1],  # Use classification input length
+            sequence_length=input_length,  # Use denoising input length
+            model_config = model_config,
             is_stage2=is_stage2
         )
 
@@ -433,8 +454,8 @@ def evaluate_downstream(config_path='code/denoising/configs/denoising_config.yam
 
         # For Stage2 models, also load the corresponding Stage1 model
         stage1_model = None
-        if is_stage2:
-            stage1_name = model_config.get('stage1_model', None)
+        if is_stage2: # TODO update this section
+            stage1_name = model_config.get('stage_1_type', None)
             if stage1_name:
                 # Check if we already loaded this Stage1 model
                 if stage1_name in stage1_models_cache:
@@ -442,26 +463,17 @@ def evaluate_downstream(config_path='code/denoising/configs/denoising_config.yam
                     print(f"  Using cached Stage1 model: {stage1_name}")
                 else:
                     # Load the Stage1 model
-                    stage1_model_path = os.path.join(
-                        denoising_exp_folder, 'models', stage1_name, 'best_model.pth'
-                    )
+                    stage1_model_path = model_config['stage_1_weights_path']
                     if os.path.exists(stage1_model_path):
                         # Determine Stage1 model type from its name or config
                         # IMPORTANT: Check for 'imunet' BEFORE 'unet' since 'imunet' contains 'unet'
-                        stage1_type = stage1_name.lower()
-                        if 'imunet' in stage1_type:
-                            stage1_type = 'imunet'
-                        elif 'fcn' in stage1_type:
-                            stage1_type = 'fcn'
-                        elif 'unet' in stage1_type:
-                            stage1_type = 'unet'
-                        else:
-                            # Fallback: try to find from config
-                            stage1_type = stage1_name.lower()
+                        stage1_type = model_config['stage_1_type']
+                        input_length = denoising_sampling_rate * 10
 
-                        stage1_model = get_model(
+                        stage1_model = get_model( # TODO: Update get_model
                             stage1_type,
-                            input_length=X_val_12lead.shape[1],
+                            sequence_length=input_length,
+                            model_config=model_config, # access mamba_params for stage 1 model
                             is_stage2=False
                         )
                         stage1_model.load_state_dict(torch.load(stage1_model_path, map_location=device, weights_only=True))
@@ -528,7 +540,11 @@ def evaluate_downstream(config_path='code/denoising/configs/denoising_config.yam
     print("\n--- Baseline: Clean Data ---")
     for clf_name, clf_model in classification_models.items():
         print(f"\nClassifying with {clf_name}...")
-        y_pred_clean = clf_model.predict(X_val_clean)
+        # revert normalization and add classification pre-processing
+        with open(os.path.join(base_exp_path, 'data', 'standard_scaler.pkl'), 'rb') as f:
+            scaler = pickle.load(f)
+        X_val_clean_original_p = apply_standardizer(X_val_12lead_original, scaler)
+        y_pred_clean = clf_model.predict(X_val_clean_original_p)
 
         auc_point = roc_auc_score(y_val, y_pred_clean, average='macro')
         ci = compute_bootstrap_ci(y_val, y_pred_clean, n_bootstraps=100)
@@ -548,7 +564,13 @@ def evaluate_downstream(config_path='code/denoising/configs/denoising_config.yam
     print("\n--- Baseline: Noisy Data (no denoising) ---")
     for clf_name, clf_model in classification_models.items():
         print(f"\nClassifying with {clf_name}...")
-        y_pred_noisy = clf_model.predict(X_val_noisy)
+        # revert normalization and add classification pre-processing
+        X_val_noisy_denorm = X_val_noisy.copy()
+        X_val_noisy_denorm = denormalize_robust(X_val_noisy_denorm, median, iqr)
+        with open(os.path.join(base_exp_path, 'data', 'standard_scaler.pkl'), 'rb') as f:
+            scaler = pickle.load(f)
+        X_val_noisy_denorm = apply_standardizer(X_val_noisy_denorm, scaler)
+        y_pred_noisy = clf_model.predict(X_val_noisy_denorm)
 
         auc_point = roc_auc_score(y_val, y_pred_noisy, average='macro')
         ci = compute_bootstrap_ci(y_val, y_pred_noisy, n_bootstraps=100)
@@ -579,9 +601,18 @@ def evaluate_downstream(config_path='code/denoising/configs/denoising_config.yam
             X_val_noisy,
             denoise_info['model'],
             device,
+            classification_sf=classification_sampling_rate,
+            denoising_sf=denoising_sampling_rate,
             batch_size=32,
             stage1_model=stage1_model
         )
+
+        # TODO: Revert denoising standardization applied earlyer
+        X_val_denoised = denormalize_robust(X_val_denoised, median, iqr)
+        # TODO: Apply classification standardization
+        with open(os.path.join(base_exp_path, 'data', 'standard_scaler.pkl'), 'rb') as f:
+            scaler = pickle.load(f)
+        X_val_denoised = apply_standardizer(X_val_denoised, scaler)
 
         # Classify with each classifier
         for clf_name, clf_model in classification_models.items():
@@ -636,7 +667,7 @@ def plot_downstream_results(results_df, output_folder):
     """
 
     # Comprehensive color map for consistent styling across all plots
-    color_map = {
+    color_map = { # TODO: Update colormap
         'noisy_input': '#808080',  # Grey (baseline)
         'fcn': '#aec7e8',         # Light blue (Stage1)
         'drnet_fcn': '#1f77b4',   # Dark blue (Stage2)
@@ -647,10 +678,16 @@ def plot_downstream_results(results_df, output_folder):
         'imunet_origin': '#9467bd',    # Purple
         'mecge_phase': '#C91CB5',
         'imunet_mamba_bn': '#ff7f0e',  # Orange
-        'imunet_mamba_bottleneck': '#1C8AC9',  # Orange
-        'imunet_mamba_up': '#17becf',  # Cyan/Teal
-        'imunet_mamba_early': '#391CC9', # Magenta/Pink
-        'imunet_mamba_late': '#bcbd22',  # Yellow-green
+        # 'imunet_mamba_bottleneck': '#1C8AC9',  # Orange
+        # 'imunet_mamba_up': '#17becf',  # Cyan/Teal
+        # 'imunet_mamba_early': '#391CC9', # Magenta/Pink
+        # 'imunet_mamba_late': '#bcbd22',  # Yellow-green
+        'mamba1_3blocks': '#8ecae6',      # light blue
+        'drnet_mamba1_3blocks': '#005f73',# dark blue
+        'mamba2_3blocks': '#94d2bd',
+        'drnet_mamba2_3blocks': '#0a9396',# dark cyan
+        'ant_drnn': '#ffbb78',
+        'chiang_dae': '#ff7f0e',
     }
 
     sns.set_style("whitegrid")
@@ -854,7 +891,7 @@ Examples:
   python evaluate_downstream.py --base-exp exp1 --classification-fs 500 --classifiers all
         """
     )
-    parser.add_argument('--config', type=str, default='code/denoising/configs/denoising_config.yaml',
+    parser.add_argument('--config', type=str, default='mycode/denoising/configs/new_run.yaml',
                        help='Path to denoising config file')
     parser.add_argument('--base-exp', type=str, default='exp0',
                        help='Name of base classification experiment')

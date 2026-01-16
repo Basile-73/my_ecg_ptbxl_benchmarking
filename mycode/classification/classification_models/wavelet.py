@@ -5,7 +5,7 @@ from sklearn.neural_network import MLPClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.multiclass import OneVsRestClassifier
 from tqdm import tqdm
-from models.base_model import ClassificationModel
+from classification_models.base_model import ClassificationModel
 import pickle
 import numpy as np
 from tqdm import tqdm
