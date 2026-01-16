@@ -29,7 +29,7 @@ sys.path.insert(0, os.path.join(script_dir, '../classification'))
 sys.path.insert(0, os.path.join(script_dir, '../../ecg_noise/source'))
 
 
-from denoising_utils.preprocessing import normalize_signals, bandpass_filter, normalize_robust
+from denoising_utils.preprocessing import normalize_signals, bandpass_filter, normalize_robust, denormalize_robust
 from ecg_noise_factory.noise import NoiseFactory
 from utils.utils import load_dataset, apply_standardizer
 
@@ -70,7 +70,7 @@ def resample_signal(signal_data, original_rate, target_rate):
             sig = signal_data[i, :, ch]
             # Calculate number of samples for target rate
             num_samples = int(len(sig) * target_rate / original_rate)
-            resampled_sig = scipy_signal.resample(sig, num_samples)
+            resampled_sig = scipy_signal.resample(sig, num_samples) # TODO check if using Fraction and resample_poly is better here.
             channels.append(resampled_sig)
 
         resampled.append(np.stack(channels, axis=1))
@@ -140,8 +140,9 @@ def load_classification_model(model_name, base_exp_folder, n_classes, input_shap
         sys.path = original_sys_path
 
 
-def denoise_12lead_signal(noisy_12lead, denoising_model, device, batch_size=32,
-                          stage1_model=None):
+def denoise_12lead_signal(noisy_12lead, denoising_model, device,
+                          classification_sf, denoising_sf,
+                          batch_size=32, stage1_model=None):
     """
     Denoise a 12-lead ECG signal by processing each lead independently.
 
@@ -156,7 +157,6 @@ def denoise_12lead_signal(noisy_12lead, denoising_model, device, batch_size=32,
         Denoised signal of same shape
     """
     n_samples, n_timesteps, n_leads = noisy_12lead.shape
-    denoised = np.zeros_like(noisy_12lead)
 
     denoising_model.eval()
     is_stage2 = stage1_model is not None
@@ -184,7 +184,9 @@ def denoise_12lead_signal(noisy_12lead, denoising_model, device, batch_size=32,
     else:
         print(f"  Using standard forward pass for {n_leads}-lead processing")
 
-    # TODO: resample from classification sampling frequency to denoising sampling frequency
+    # Resample from classification_sf to denoising_sf
+    noisy_12lead = resample_signal(noisy_12lead, classification_sf, denoising_sf)
+    denoised = np.zeros_like(noisy_12lead)
 
     # Process each lead
     for lead_idx in range(n_leads):
@@ -229,7 +231,7 @@ def denoise_12lead_signal(noisy_12lead, denoising_model, device, batch_size=32,
 
             denoised[batch_start:batch_end, :, lead_idx] = denoised_batch[:, :, 0]
 
-    # TODO: resample back to classification sampling frequency
+    denoised = resample_signal(denoised, denoising_sf, classification_sf)
 
     return denoised
 
@@ -283,7 +285,7 @@ def compute_bootstrap_ci(y_true, y_pred, n_bootstraps=100, confidence_level=0.95
 
 
 def evaluate_downstream(config_path='code/denoising/configs/denoising_config.yaml', base_exp='exp0',
-                       classification_sampling_rate=500, denoising_sampling_rate=360, classifier_names=None):
+                       classification_sampling_rate=500, classifier_names=None):
     """
     Main evaluation function.
 
@@ -437,7 +439,7 @@ def evaluate_downstream(config_path='code/denoising/configs/denoising_config.yam
         is_stage2 = model_config['is_stage_2']
         input_length = denoising_sampling_rate * 10
 
-        model = get_model( # TODO: Update get_model
+        model = get_model(
             model_type,
             sequence_length=input_length,  # Use denoising input length
             model_config = model_config,
@@ -450,7 +452,7 @@ def evaluate_downstream(config_path='code/denoising/configs/denoising_config.yam
 
         # For Stage2 models, also load the corresponding Stage1 model
         stage1_model = None
-        if is_stage2:
+        if is_stage2: # TODO update this section
             stage1_name = model_config.get('stage1_model', None)
             if stage1_name:
                 # Check if we already loaded this Stage1 model
@@ -596,12 +598,18 @@ def evaluate_downstream(config_path='code/denoising/configs/denoising_config.yam
             X_val_noisy,
             denoise_info['model'],
             device,
+            classification_sf=classification_sampling_rate,
+            denoising_sf=denoising_sampling_rate,
             batch_size=32,
             stage1_model=stage1_model
         )
 
         # TODO: Revert denoising standardization applied earlyer
+        X_val_denoised = denormalize_robust(X_val_denoised, median, iqr)
         # TODO: Apply classification standardization
+        with open(os.path.join(base_exp_path, 'data', 'standard_scaler.pkl'), 'rb') as f:
+            scaler = pickle.load(f)
+        X_val_denoised = apply_standardizer(X_val_denoised, scaler)
 
         # Classify with each classifier
         for clf_name, clf_model in classification_models.items():
