@@ -677,6 +677,7 @@ def plot_downstream_results(results_df, output_folder):
         'drnet_imunet': '#2ca02c', # Dark green (Stage2)
         'imunet_origin': '#9467bd',    # Purple
         'mecge_phase': '#C91CB5',
+        'mecge': '#C91CB5',
         'imunet_mamba_bn': '#ff7f0e',  # Orange
         # 'imunet_mamba_bottleneck': '#1C8AC9',  # Orange
         # 'imunet_mamba_up': '#17becf',  # Cyan/Teal
