@@ -12,14 +12,15 @@ def main():
 
     datafolder = 'data/physionet.org/files/ptb-xl/1.0.3/'
     # datafolder_icbeb = '../../data/ICBEB/' # ICBEB data not available
-    outputfolder = 'mycode/classification/output/refactored/'
+    outputfolder = 'mycode/classification/output/refactored500/'
+    sampling_frequency = 500
 
     models = [
         conf_fastai_xresnet1d101,
-        # conf_fastai_resnet1d_wang,
-        # conf_fastai_lstm,
-        # conf_fastai_lstm_bidir,
-        # conf_fastai_fcn_wang,
+        conf_fastai_resnet1d_wang,
+        conf_fastai_lstm,
+        conf_fastai_lstm_bidir,
+        conf_fastai_fcn_wang,
         conf_fastai_inception1d,
         # conf_wavelet_standard_nn, # model written in keras. Skipped to avoid refactoring in conda env
         ]
@@ -38,7 +39,7 @@ def main():
        ]
 
     for name, task in experiments:
-        e = SCP_Experiment(name, task, datafolder, outputfolder, models)
+        e = SCP_Experiment(name, task, datafolder, outputfolder, models, sampling_frequency=sampling_frequency)
         e.prepare()
         e.perform()
         e.evaluate()
