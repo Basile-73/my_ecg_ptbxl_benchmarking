@@ -355,6 +355,12 @@ class MECGE(nn.Module):
             is_4d_input = True
             noisy_audio = noisy_audio.squeeze(2)  # Convert to (batch, 1, time)
 
+        # TODO: implement signal length check
+
+        # TODO: implement chunking logic
+
+        # TODO: hand this off to _denoise_chunk
+
         if self.norm=='1':
             norm_factor = torch.sqrt(noisy_audio.shape[-1] / torch.sum(noisy_audio ** 2.0, -1, keepdim=True))
         elif self.norm=='2':
@@ -405,11 +411,16 @@ class MECGE(nn.Module):
         audio_g = audio_g.unsqueeze(1)
         audio_g = audio_g/norm_factor
 
+        # TODO end of handoff
+
         # Restore 4D output format if input was 4D
         if is_4d_input:
             audio_g = audio_g.unsqueeze(2)  # Convert back to (batch, 1, 1, time)
 
         return audio_g
+
+    def _denoise_chunck(self, noisy_audio):
+        pass
 
     def get_loss(self, clean_audio, noisy_audio): # [B, F, T]
         """
