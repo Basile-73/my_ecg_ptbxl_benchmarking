@@ -16,6 +16,7 @@ import numpy as np
 import pandas as pd
 import pickle
 import torch
+import torch.nn as nn
 from scipy import signal as scipy_signal
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -237,20 +238,23 @@ def denoise_12lead_signal(noisy_12lead, denoising_model, device,
     return denoised
 
 
-def compute_bootstrap_ci(y_true, y_pred, n_bootstraps=100, confidence_level=0.95):
+def compute_bootstrap_ci(y_true, y_pred, n_bootstraps=100, confidence_level=0.95, metric='auc'):
     """
-    Compute bootstrap confidence intervals for AUC.
+    Compute bootstrap confidence intervals for AUC or BCE.
 
     Args:
-        y_true: True labels
-        y_pred: Predicted probabilities
+        y_true: True labels (binary multi-label format)
+        y_pred: Model predictions. Must be:
+                - Probabilities (0-1) for metric='auc'
+                - Unnormalized logits for metric='bce' (BCEWithLogitsLoss expects raw model outputs)
         n_bootstraps: Number of bootstrap samples
         confidence_level: Confidence level (e.g., 0.95 for 95% CI)
+        metric: 'auc' or 'bce' to specify which metric to compute
 
     Returns:
         Dictionary with mean, lower, and upper bounds
     """
-    aucs = []
+    scores = []
     n_samples = len(y_true)
 
     np.random.seed(42)
@@ -259,29 +263,39 @@ def compute_bootstrap_ci(y_true, y_pred, n_bootstraps=100, confidence_level=0.95
         # Sample with replacement
         indices = np.random.choice(n_samples, n_samples, replace=True)
 
-        # Check if we have at least one positive sample per class
         y_true_boot = y_true[indices]
-        if y_true_boot.sum(axis=0).min() == 0:
-            continue
-
         y_pred_boot = y_pred[indices]
 
+        # For AUC: check if we have at least one positive sample per class
+        # For BCE: no filtering needed, all samples are valid
+        if metric == 'auc' and y_true_boot.sum(axis=0).min() == 0:
+            continue
+
         try:
-            auc = roc_auc_score(y_true_boot, y_pred_boot, average='macro')
-            aucs.append(auc)
+            if metric == 'auc':
+                score = roc_auc_score(y_true_boot, y_pred_boot, average='macro')
+            elif metric == 'bce':
+                # BCE expects unnormalized logits (raw model outputs before sigmoid)
+                bce_loss = nn.BCEWithLogitsLoss()
+                y_true_tensor = torch.FloatTensor(y_true_boot)
+                y_pred_tensor = torch.FloatTensor(y_pred_boot)
+                score = bce_loss(y_pred_tensor, y_true_tensor).item()
+            else:
+                raise ValueError(f"Unknown metric: {metric}")
+            scores.append(score)
         except:
             continue
 
-    if len(aucs) == 0:
+    if len(scores) == 0:
         return {'mean': 0.0, 'lower': 0.0, 'upper': 0.0}
 
-    aucs = np.array(aucs)
+    scores = np.array(scores)
     alpha = 1 - confidence_level
 
     return {
-        'mean': np.mean(aucs),
-        'lower': np.percentile(aucs, 100 * alpha / 2),
-        'upper': np.percentile(aucs, 100 * (1 - alpha / 2))
+        'mean': np.mean(scores),
+        'lower': np.percentile(scores, 100 * alpha / 2),
+        'upper': np.percentile(scores, 100 * (1 - alpha / 2))
     }
 
 
@@ -550,16 +564,27 @@ def evaluate_downstream(config_path='code/denoising/configs/denoising_config.yam
         auc_point = roc_auc_score(y_val, y_pred_clean, average='macro')
         ci = compute_bootstrap_ci(y_val, y_pred_clean, n_bootstraps=100)
 
+        # Compute BCE (requires unnormalized logits from classifier)
+        # Note: y_pred_clean contains raw model outputs (logits), not probabilities
+        bce_loss = nn.BCEWithLogitsLoss()
+        bce_point = bce_loss(torch.FloatTensor(y_pred_clean), torch.FloatTensor(y_val)).item()
+        bce_ci = compute_bootstrap_ci(y_val, y_pred_clean, n_bootstraps=100, metric='bce')
+
         results.append({
             'denoising_model': 'clean',
             'classification_model': clf_name,
             'auc': auc_point,
             'auc_mean': ci['mean'],
             'auc_lower': ci['lower'],
-            'auc_upper': ci['upper']
+            'auc_upper': ci['upper'],
+            'bce': bce_point,
+            'bce_mean': bce_ci['mean'],
+            'bce_lower': bce_ci['lower'],
+            'bce_upper': bce_ci['upper']
         })
 
         print(f"  AUC: {auc_point:.4f} (95% CI: [{ci['lower']:.4f}, {ci['upper']:.4f}])")
+        print(f"  BCE: {bce_point:.4f} (95% CI: [{bce_ci['lower']:.4f}, {bce_ci['upper']:.4f}])")
 
     # Baseline: Noisy data (no denoising)
     print("\n--- Baseline: Noisy Data (no denoising) ---")
@@ -576,16 +601,27 @@ def evaluate_downstream(config_path='code/denoising/configs/denoising_config.yam
         auc_point = roc_auc_score(y_val, y_pred_noisy, average='macro')
         ci = compute_bootstrap_ci(y_val, y_pred_noisy, n_bootstraps=100)
 
+        # Compute BCE (requires unnormalized logits from classifier)
+        # Note: y_pred_noisy contains raw model outputs (logits), not probabilities
+        bce_loss = nn.BCEWithLogitsLoss()
+        bce_point = bce_loss(torch.FloatTensor(y_pred_noisy), torch.FloatTensor(y_val)).item()
+        bce_ci = compute_bootstrap_ci(y_val, y_pred_noisy, n_bootstraps=100, metric='bce')
+
         results.append({
             'denoising_model': 'noisy',
             'classification_model': clf_name,
             'auc': auc_point,
             'auc_mean': ci['mean'],
             'auc_lower': ci['lower'],
-            'auc_upper': ci['upper']
+            'auc_upper': ci['upper'],
+            'bce': bce_point,
+            'bce_mean': bce_ci['mean'],
+            'bce_lower': bce_ci['lower'],
+            'bce_upper': bce_ci['upper']
         })
 
         print(f"  AUC: {auc_point:.4f} (95% CI: [{ci['lower']:.4f}, {ci['upper']:.4f}])")
+        print(f"  BCE: {bce_point:.4f} (95% CI: [{bce_ci['lower']:.4f}, {bce_ci['upper']:.4f}])")
 
     # Denoised data
     print("\n--- Denoised Data ---")
@@ -623,16 +659,27 @@ def evaluate_downstream(config_path='code/denoising/configs/denoising_config.yam
             auc_point = roc_auc_score(y_val, y_pred_denoised, average='macro')
             ci = compute_bootstrap_ci(y_val, y_pred_denoised, n_bootstraps=100)
 
+            # Compute BCE (requires unnormalized logits from classifier)
+            # Note: y_pred_denoised contains raw model outputs (logits), not probabilities
+            bce_loss = nn.BCEWithLogitsLoss()
+            bce_point = bce_loss(torch.FloatTensor(y_pred_denoised), torch.FloatTensor(y_val)).item()
+            bce_ci = compute_bootstrap_ci(y_val, y_pred_denoised, n_bootstraps=100, metric='bce')
+
             results.append({
                 'denoising_model': denoise_name,
                 'classification_model': clf_name,
                 'auc': auc_point,
                 'auc_mean': ci['mean'],
                 'auc_lower': ci['lower'],
-                'auc_upper': ci['upper']
+                'auc_upper': ci['upper'],
+                'bce': bce_point,
+                'bce_mean': bce_ci['mean'],
+                'bce_lower': bce_ci['lower'],
+                'bce_upper': bce_ci['upper']
             })
 
             print(f"    AUC: {auc_point:.4f} (95% CI: [{ci['lower']:.4f}, {ci['upper']:.4f}])")
+            print(f"    BCE: {bce_point:.4f} (95% CI: [{bce_ci['lower']:.4f}, {bce_ci['upper']:.4f}])")
 
     # ========================================================================
     # Save and visualize results
@@ -664,15 +711,39 @@ def evaluate_downstream(config_path='code/denoising/configs/denoising_config.yam
 def plot_downstream_results(results_df, output_folder):
     """Create visualizations of downstream classification results.
 
-    Creates one PNG file per classification model showing all denoising approaches.
+    Creates PNG files for both AUC and BCE metrics per classification model.
     """
+    # Generate AUC plots
+    plot_metric_bars(results_df, output_folder, metric='auc')
 
+    # Generate BCE plots
+    plot_metric_bars(results_df, output_folder, metric='bce')
+
+    # Create improvement heatmaps
+    create_improvement_heatmap(results_df, output_folder, metric='auc')
+    create_improvement_heatmap(results_df, output_folder, metric='bce')
+
+
+def plot_metric_bars(results_df, output_folder, metric='auc'):
+    """Create bar plots for a specific metric (AUC or BCE).
+
+    Creates one PNG file per classification model showing all denoising approaches.
+
+    Args:
+        results_df: DataFrame with evaluation results
+        output_folder: Path to save plots
+        metric: 'auc' or 'bce'
+    """
     # Comprehensive color map for consistent styling across all plots
     color_map = COLOR_MAP
 
     sns.set_style("whitegrid")
 
     classifiers = results_df['classification_model'].unique()
+
+    # Determine if lower is better (BCE) or higher is better (AUC)
+    lower_is_better = (metric == 'bce')
+    metric_label = 'BCE (Binary Cross Entropy)' if metric == 'bce' else 'AUC (macro)'
 
     # Create one figure per classifier
     for clf_name in classifiers:
@@ -707,13 +778,13 @@ def plot_downstream_results(results_df, output_folder):
 
         # Prepare data for plotting
         denoise_models = clf_data['denoising_model'].values
-        aucs = clf_data['auc'].values
-        auc_lowers = clf_data['auc_lower'].values
-        auc_uppers = clf_data['auc_upper'].values
+        metric_values = clf_data[metric].values
+        metric_lowers = clf_data[f'{metric}_lower'].values
+        metric_uppers = clf_data[f'{metric}_upper'].values
 
         # Calculate error bars
-        yerr_lower = aucs - auc_lowers
-        yerr_upper = auc_uppers - aucs
+        yerr_lower = metric_values - metric_lowers
+        yerr_upper = metric_uppers - metric_values
 
         # Assign colors using color_map for consistency
         colors = []
@@ -736,94 +807,136 @@ def plot_downstream_results(results_df, output_folder):
         # Create horizontal bar plot
         y_pos = np.arange(len(denoise_models))
 
-        # Find baseline AUC values
-        noisy_auc = None
-        clean_auc = None
+        # Find baseline metric values
+        noisy_value = None
+        clean_value = None
         for i, model in enumerate(denoise_models):
             if model == 'noisy':
-                noisy_auc = aucs[i]
+                noisy_value = metric_values[i]
             elif model == 'clean':
-                clean_auc = aucs[i]
+                clean_value = metric_values[i]
 
         # Add hatched regions covering entire plot height (in background)
         y_min = -0.5
         y_max = len(denoise_models) - 0.5
 
-        # Hatched region between 0 and noisy baseline
-        if noisy_auc is not None:
-            ax.fill_betweenx([y_min, y_max], 0, noisy_auc,
-                            color='lightgrey', alpha=0.2, hatch='///',
-                            edgecolor='grey', linewidth=0.5, zorder=0)
+        # For AUC (higher is better): shade below noisy and above clean
+        # For BCE (lower is better): shade above noisy and below clean
+        if lower_is_better:
+            # BCE: shade region above noisy (worse performance)
+            if noisy_value is not None:
+                x_max_limit = metric_values.max() * 1.1
+                ax.fill_betweenx([y_min, y_max], noisy_value, x_max_limit,
+                                color='lightgrey', alpha=0.2, hatch='///',
+                                edgecolor='grey', linewidth=0.5, zorder=0)
+            # BCE: shade region below clean (better than clean)
+            if clean_value is not None:
+                ax.fill_betweenx([y_min, y_max], 0, clean_value,
+                                color='lightgrey', alpha=0.2, hatch='///',
+                                edgecolor='grey', linewidth=0.5, zorder=0)
+        else:
+            # AUC: shade region below noisy (worse performance)
+            if noisy_value is not None:
+                ax.fill_betweenx([y_min, y_max], 0, noisy_value,
+                                color='lightgrey', alpha=0.2, hatch='///',
+                                edgecolor='grey', linewidth=0.5, zorder=0)
+            # AUC: shade region above clean (better than clean)
+            if clean_value is not None:
+                ax.fill_betweenx([y_min, y_max], clean_value, 1.0,
+                                color='lightgrey', alpha=0.2, hatch='///',
+                                edgecolor='grey', linewidth=0.5, zorder=0)
 
-        # Hatched region between clean baseline and x-axis max limit
-        if clean_auc is not None:
-            ax.fill_betweenx([y_min, y_max], clean_auc, 1.0,
-                            color='lightgrey', alpha=0.2, hatch='///',
-                            edgecolor='grey', linewidth=0.5, zorder=0)
-
-        bars = ax.barh(y_pos, aucs, xerr=[yerr_lower, yerr_upper],
+        bars = ax.barh(y_pos, metric_values, xerr=[yerr_lower, yerr_upper],
                       color=colors, alpha=0.8, edgecolor='black',
                       linewidth=1, capsize=4)
 
         ax.set_yticks(y_pos)
         ax.set_yticklabels(display_names, fontsize=plot_font_sizes['ticks'])
         ax.set_ylim([y_min, y_max])
-        ax.set_xlabel('AUC (macro)', fontsize=plot_font_sizes['axis_labels'], fontweight='bold')
+        ax.set_xlabel(metric_label, fontsize=plot_font_sizes['axis_labels'], fontweight='bold')
         clf_display_name = CLASSIFICATION_MODEL_NAMES.get(clf_name, clf_name)
         # ax.set_title(f'Downstream ECG Classification Performance - {clf_display_name}',
         #             fontsize=plot_font_sizes['title'], fontweight='bold', pad=15)
         ax.grid(True, alpha=0.3, axis='x')
 
-        # Add value labels above upper confidence interval
-        for i, (auc, lower, upper) in enumerate(zip(aucs, auc_lowers, auc_uppers)):
-            ax.text(upper + 0.001, i, f'{auc:.4f}',
-                   ha='left', va='center', fontsize=plot_font_sizes['value_labels'], fontweight='bold',
-                   bbox=dict(boxstyle='round,pad=0.3', facecolor='white',
-                            edgecolor='none', alpha=0.7))
+        # Add value labels at appropriate position based on metric direction
+        for i, (value, lower, upper) in enumerate(zip(metric_values, metric_lowers, metric_uppers)):
+            # For BCE, put label to the left of lower bound; for AUC, to the right of upper bound
+            if lower_is_better:
+                ax.text(lower - 0.001, i, f'{value:.4f}',
+                       ha='right', va='center', fontsize=plot_font_sizes['value_labels'], fontweight='bold',
+                       bbox=dict(boxstyle='round,pad=0.3', facecolor='white',
+                                edgecolor='none', alpha=0.7))
+            else:
+                ax.text(upper + 0.001, i, f'{value:.4f}',
+                       ha='left', va='center', fontsize=plot_font_sizes['value_labels'], fontweight='bold',
+                       bbox=dict(boxstyle='round,pad=0.3', facecolor='white',
+                                edgecolor='none', alpha=0.7))
 
         # Set x-axis limits dynamically based on best and worst performing models
-        x_min = max(0.5, aucs.min() - 0.01)
-        x_max = min(1.0, aucs.max() + 0.02)
+        if lower_is_better:
+            x_min = max(0, metric_values.min() - 0.02)
+            x_max = metric_values.max() + 0.02
+        else:
+            x_min = max(0.5, metric_values.min() - 0.01)
+            x_max = min(1.0, metric_values.max() + 0.02)
         ax.set_xlim([x_min, x_max])
 
         # Add vertical dotted line at the best performing model (excluding clean)
-        best_auc = 0
-        for i, model in enumerate(denoise_models):
-            if model != 'clean' and aucs[i] > best_auc:
-                best_auc = aucs[i]
-        if best_auc > 0:
-            ax.axvline(x=best_auc, color='darkgrey', linestyle=':', linewidth=2,
-                      alpha=0.7, zorder=1, label=f'Best: {best_auc:.4f}')
+        if lower_is_better:
+            # For BCE, best is minimum
+            best_value = float('inf')
+            for i, model in enumerate(denoise_models):
+                if model != 'clean' and metric_values[i] < best_value:
+                    best_value = metric_values[i]
+            if best_value != float('inf'):
+                ax.axvline(x=best_value, color='darkgrey', linestyle=':', linewidth=2,
+                          alpha=0.7, zorder=1, label=f'Best: {best_value:.4f}')
+        else:
+            # For AUC, best is maximum
+            best_value = 0
+            for i, model in enumerate(denoise_models):
+                if model != 'clean' and metric_values[i] > best_value:
+                    best_value = metric_values[i]
+            if best_value > 0:
+                ax.axvline(x=best_value, color='darkgrey', linestyle=':', linewidth=2,
+                          alpha=0.7, zorder=1, label=f'Best: {best_value:.4f}')
 
         plt.tight_layout()
 
-        # Save plot with classifier name in filename
+        # Save plot with classifier name and metric in filename
         safe_clf_name = clf_name.replace('/', '_').replace('\\', '_')
-        plot_path = os.path.join(output_folder, f'downstream_classification_{safe_clf_name}.png')
+        plot_path = os.path.join(output_folder, f'downstream_{metric}_{safe_clf_name}.png')
         plt.savefig(plot_path, dpi=300, bbox_inches='tight')
         plt.close()
 
-        print(f"✓ Visualization saved to: {plot_path}")
-
-    # Create improvement heatmap
-    create_improvement_heatmap(results_df, output_folder)
+        print(f"✓ {metric.upper()} visualization saved to: {plot_path}")
 
 
-def create_improvement_heatmap(results_df, output_folder):
-    """Create heatmap showing AUC improvements over noisy baseline."""
+def create_improvement_heatmap(results_df, output_folder, metric='auc'):
+    """Create heatmap showing metric improvements over noisy baseline.
 
+    Args:
+        results_df: DataFrame with evaluation results
+        output_folder: Path to save plots
+        metric: 'auc' or 'bce'
+    """
     fig, ax = plt.subplots(figsize=(12, 8))
 
     classifiers = sorted(results_df['classification_model'].unique())
 
+    # For BCE, lower is better, so improvement is negative (reduction)
+    lower_is_better = (metric == 'bce')
+    metric_label = 'BCE' if metric == 'bce' else 'AUC'
+
     # Get noisy baseline for each classifier
-    noisy_aucs = {}
+    noisy_values = {}
     for clf in classifiers:
-        noisy_auc = results_df[
+        noisy_value = results_df[
             (results_df['classification_model'] == clf) &
             (results_df['denoising_model'] == 'noisy')
-        ]['auc'].values[0]
-        noisy_aucs[clf] = noisy_auc
+        ][metric].values[0]
+        noisy_values[clf] = noisy_value
 
     # Calculate improvements
     improvements = []
@@ -837,13 +950,18 @@ def create_improvement_heatmap(results_df, output_folder):
         row = []
 
         for clf in classifiers:
-            denoised_auc = results_df[
+            denoised_value = results_df[
                 (results_df['classification_model'] == clf) &
                 (results_df['denoising_model'] == denoise_model)
-            ]['auc'].values
+            ][metric].values
 
-            if len(denoised_auc) > 0:
-                improvement = denoised_auc[0] - noisy_aucs[clf]
+            if len(denoised_value) > 0:
+                if lower_is_better:
+                    # For BCE, improvement is reduction (negative change is good)
+                    improvement = noisy_values[clf] - denoised_value[0]
+                else:
+                    # For AUC, improvement is increase (positive change is good)
+                    improvement = denoised_value[0] - noisy_values[clf]
                 row.append(improvement)
             else:
                 row.append(0)
@@ -875,21 +993,24 @@ def create_improvement_heatmap(results_df, output_folder):
 
         # Add colorbar
         cbar = plt.colorbar(im, ax=ax)
-        cbar.set_label('AUC Improvement over Noisy Baseline', fontsize=11, fontweight='bold')
+        if lower_is_better:
+            cbar.set_label(f'{metric_label} Reduction from Noisy Baseline', fontsize=11, fontweight='bold')
+        else:
+            cbar.set_label(f'{metric_label} Improvement over Noisy Baseline', fontsize=11, fontweight='bold')
 
-        ax.set_title('Denoising Impact on Classification Performance',
+        ax.set_title(f'Denoising Impact on Classification Performance ({metric_label})',
                     fontsize=13, fontweight='bold', pad=15)
         ax.set_xlabel('Classification Model', fontsize=11, fontweight='bold')
         ax.set_ylabel('Denoising Model', fontsize=11, fontweight='bold')
 
         plt.tight_layout()
 
-        # Save plot
-        plot_path = os.path.join(output_folder, 'downstream_improvement_heatmap.png')
+        # Save plot with metric in filename
+        plot_path = os.path.join(output_folder, f'downstream_improvement_heatmap_{metric}.png')
         plt.savefig(plot_path, dpi=300, bbox_inches='tight')
         plt.close()
 
-        print(f"✓ Heatmap saved to: {plot_path}")
+        print(f"✓ {metric_label} heatmap saved to: {plot_path}")
 
 # results_df = pd.read_csv('/local/home/bamorel/my_ecg_ptbxl_benchmarking/mycode/denoising/output/all_100_nbp/downstream_results/downstream_classification_results.csv')
 # output_folder = '/local/home/bamorel/my_ecg_ptbxl_benchmarking/mycode/denoising/output/all_100_nbp/downstream_results/'
