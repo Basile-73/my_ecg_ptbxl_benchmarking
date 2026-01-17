@@ -54,3 +54,8 @@ OUR_MODELS = [
     'mamba2_3blocks',
     'drnet_mamba2_3blocks',
 ]
+
+EXCLUDE_MODELS = [
+    'mamba2_3blocks',
+    'drnet_mamba2_3blocks',
+]

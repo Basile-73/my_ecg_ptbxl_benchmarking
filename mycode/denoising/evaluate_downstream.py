@@ -35,7 +35,7 @@ from utils.utils import load_dataset, apply_standardizer
 
 sys.path.insert(0, os.path.join(script_dir, '../../'))
 from new_code.utils.getters import get_model
-from new_code.visualisation.maps import COLOR_MAP, OUR_MODELS, NAME_MAP
+from new_code.visualisation.maps import COLOR_MAP, OUR_MODELS, NAME_MAP, EXCLUDE_MODELS
 
 
 def load_config(config_path='code/denoising/configs/denoising_config.yaml'):
@@ -681,13 +681,16 @@ def plot_downstream_results(results_df, output_folder):
         # Filter data for this classifier
         clf_data = results_df[results_df['classification_model'] == clf_name].copy()
 
+        # Exclude models that are in EXCLUDE_MODELS
+        clf_data = clf_data[~clf_data['denoising_model'].isin(EXCLUDE_MODELS)]
+
         # Order models according to colormap for consistent visual grouping
         all_denoise_models = clf_data['denoising_model'].unique().tolist()
         colormap_order = list(color_map.keys())
-        # Filter to include only models that are in the data (excluding 'clean' and 'noisy')
-        ordered_models = [m for m in colormap_order if m in all_denoise_models and m not in ['clean', 'noisy']]
-        # Find any models not in the colormap
-        unlisted_models = [m for m in all_denoise_models if m not in color_map and m not in ['clean', 'noisy']]
+        # Filter to include only models that are in the data (excluding 'clean', 'noisy', and excluded models)
+        ordered_models = [m for m in colormap_order if m in all_denoise_models and m not in ['clean', 'noisy'] and m not in EXCLUDE_MODELS]
+        # Find any models not in the colormap (excluding excluded models)
+        unlisted_models = [m for m in all_denoise_models if m not in color_map and m not in ['clean', 'noisy'] and m not in EXCLUDE_MODELS]
         # Combine them: colormap order first, then unlisted
         sorted_models = ordered_models + unlisted_models
         # Add baseline models: noisy first, clean last
