@@ -1056,7 +1056,7 @@ def plot_metric_bars_combined(results_df, output_folder):
 
         # BCE hatched regions (lower is better)
         if noisy_bce is not None:
-            x_max_limit = bce_values.max() * 1.1
+            x_max_limit = bce_values.max() + 0.03
             ax2.fill_betweenx([y_min, y_max], noisy_bce, x_max_limit,
                             color='lightgrey', alpha=0.2, hatch='///',
                             edgecolor='grey', linewidth=0.5, zorder=0)
@@ -1073,16 +1073,16 @@ def plot_metric_bars_combined(results_df, output_folder):
         ax2.set_xlabel('BCE (Binary Cross Entropy)', fontsize=plot_font_sizes['axis_labels'], fontweight='bold')
         ax2.grid(True, alpha=0.3, axis='x')
 
-        # Add value labels for BCE (on the left of lower bound)
+        # Add value labels for BCE (on the right of upper bound)
         for i, (value, lower, upper) in enumerate(zip(bce_values, bce_lowers, bce_uppers)):
-            ax2.text(lower - 0.001, i, f'{value:.4f}',
-                   ha='right', va='center', fontsize=plot_font_sizes['value_labels'], fontweight='bold',
+            ax2.text(upper + 0.001, i, f'{value:.4f}',
+                   ha='left', va='center', fontsize=plot_font_sizes['value_labels'], fontweight='bold',
                    bbox=dict(boxstyle='round,pad=0.3', facecolor='white',
                             edgecolor='none', alpha=0.7))
 
         # Set x-axis limits for BCE
         x_min_bce = max(0, bce_values.min() - 0.02)
-        x_max_bce = bce_values.max() + 0.02
+        x_max_bce = bce_values.max() + 0.015
         ax2.set_xlim([x_min_bce, x_max_bce])
 
         # Best BCE line (minimum)
@@ -1225,9 +1225,9 @@ def create_improvement_heatmap(results_df, output_folder, metric='auc'):
 
         print(f"✓ {metric_label} heatmap saved to: {plot_path}")
 
-results_df = pd.read_csv('/local/home/bamorel/my_ecg_ptbxl_benchmarking/mycode/denoising/output/test/downstream_results/downstream_classification_results.csv')
-output_folder = '/local/home/bamorel/my_ecg_ptbxl_benchmarking/mycode/denoising/output/test/downstream_results/'
-plot_downstream_results(results_df, output_folder)
+# results_df = pd.read_csv('/local/home/bamorel/my_ecg_ptbxl_benchmarking/mycode/denoising/output/test/downstream_results/downstream_classification_results.csv')
+# output_folder = '/local/home/bamorel/my_ecg_ptbxl_benchmarking/mycode/denoising/output/test/downstream_results/'
+# plot_downstream_results(results_df, output_folder)
 
 
 def main():
