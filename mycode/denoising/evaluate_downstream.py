@@ -693,6 +693,8 @@ def plot_downstream_results(results_df, output_folder):
         # Prepend baseline models at the beginning
         baseline_models = [m for m in ['clean', 'noisy'] if m in all_denoise_models]
         sorted_models = baseline_models + sorted_models
+        # Reverse the order for plotting (bottom to top)
+        sorted_models = sorted_models[::-1]
         # Reorder DataFrame
         clf_data['model_order'] = clf_data['denoising_model'].apply(lambda x: sorted_models.index(x) if x in sorted_models else len(sorted_models))
         clf_data = clf_data.sort_values('model_order', ascending=True)
@@ -718,6 +720,14 @@ def plot_downstream_results(results_df, output_folder):
             else:
                 colors.append(color_map.get(model, '#cccccc'))  # Use color_map, default to grey
 
+        # Create display names using NAME_MAP and add (ours) for our models
+        display_names = []
+        for model in denoise_models:
+            display_name = NAME_MAP.get(model, model)
+            if model in OUR_MODELS:
+                display_name = f"{display_name} (ours)"
+            display_names.append(display_name)
+
         # Create horizontal bar plot
         y_pos = np.arange(len(denoise_models))
         bars = ax.barh(y_pos, aucs, xerr=[yerr_lower, yerr_upper],
@@ -725,7 +735,7 @@ def plot_downstream_results(results_df, output_folder):
                       linewidth=1, capsize=4)
 
         ax.set_yticks(y_pos)
-        ax.set_yticklabels(denoise_models, fontsize=13)
+        ax.set_yticklabels(display_names, fontsize=13)
         ax.set_xlabel('AUC (macro)', fontsize=15, fontweight='bold')
         ax.set_title(f'Downstream ECG Classification Performance - {clf_name}',
                     fontsize=17, fontweight='bold', pad=15)
@@ -733,15 +743,14 @@ def plot_downstream_results(results_df, output_folder):
 
         # Add value labels above upper confidence interval
         for i, (auc, lower, upper) in enumerate(zip(aucs, auc_lowers, auc_uppers)):
-            ax.text(upper + 0.01, i, f'{auc:.4f}',
+            ax.text(upper + 0.001, i, f'{auc:.4f}',
                    ha='left', va='center', fontsize=12, fontweight='bold',
                    bbox=dict(boxstyle='round,pad=0.3', facecolor='white',
                             edgecolor='none', alpha=0.7))
 
-        # Set x-axis limits (increased max to accommodate rotated text)
-        all_values = np.concatenate([auc_lowers, auc_uppers])
-        x_min = max(0.5, all_values.min() - 0.02)
-        x_max = min(1.0, all_values.max() + 0.08)
+        # Set x-axis limits dynamically based on best and worst performing models
+        x_min = max(0.5, aucs.min() - 0.01)
+        x_max = min(1.0, aucs.max() + 0.02)
         ax.set_xlim([x_min, x_max])
 
         plt.tight_layout()
@@ -840,9 +849,9 @@ def create_improvement_heatmap(results_df, output_folder):
 
         print(f"✓ Heatmap saved to: {plot_path}")
 
-# results_df = pd.read_csv('/local/home/bamorel/my_ecg_ptbxl_benchmarking/mycode/denoising/output/all_100_nbp/downstream_results/downstream_classification_results.csv')
-# output_folder = '/local/home/bamorel/my_ecg_ptbxl_benchmarking/mycode/denoising/output/all_100_nbp/downstream_results/'
-# plot_downstream_results(results_df, output_folder)
+results_df = pd.read_csv('/local/home/bamorel/my_ecg_ptbxl_benchmarking/mycode/denoising/output/all_100_nbp/downstream_results/downstream_classification_results.csv')
+output_folder = '/local/home/bamorel/my_ecg_ptbxl_benchmarking/mycode/denoising/output/all_100_nbp/downstream_results/'
+plot_downstream_results(results_df, output_folder)
 
 
 def main():
