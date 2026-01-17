@@ -16,6 +16,7 @@ COLOR_MAP = {
     'drnet_imunet': '#2ca02c', # Dark green (Stage2)
     'imunet_origin': '#9467bd',    # Purple
     'mecge_phase': '#f6c453',      # warm golden yellow
+    'mecge': '#f6c453',
     'mecge_phase_250': '#e0a800',  # deeper amber
     # 'imunet_mamba_bn': '#ff7f0e',  # Orange
     # 'imunet_mamba_bottleneck': '#1C8AC9',  # Cyan-blue

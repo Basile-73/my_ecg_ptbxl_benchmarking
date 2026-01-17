@@ -35,6 +35,7 @@ from utils.utils import load_dataset, apply_standardizer
 
 sys.path.insert(0, os.path.join(script_dir, '../../'))
 from new_code.utils.getters import get_model
+from new_code.visualisation.maps import COLOR_MAP, OUR_MODELS, NAME_MAP
 
 
 def load_config(config_path='code/denoising/configs/denoising_config.yaml'):
@@ -667,29 +668,7 @@ def plot_downstream_results(results_df, output_folder):
     """
 
     # Comprehensive color map for consistent styling across all plots
-    color_map = { # TODO: Update colormap
-        'noisy_input': '#808080',  # Grey (baseline)
-        'fcn': '#aec7e8',         # Light blue (Stage1)
-        'drnet_fcn': '#1f77b4',   # Dark blue (Stage2)
-        'unet': '#ff9896',        # Light red (Stage1)
-        'drnet_unet': '#d62728',  # Dark red (Stage2)
-        'imunet': '#98df8a',      # Light green (Stage1)
-        'drnet_imunet': '#2ca02c', # Dark green (Stage2)
-        'imunet_origin': '#9467bd',    # Purple
-        'mecge_phase': '#C91CB5',
-        'mecge': '#C91CB5',
-        'imunet_mamba_bn': '#ff7f0e',  # Orange
-        # 'imunet_mamba_bottleneck': '#1C8AC9',  # Orange
-        # 'imunet_mamba_up': '#17becf',  # Cyan/Teal
-        # 'imunet_mamba_early': '#391CC9', # Magenta/Pink
-        # 'imunet_mamba_late': '#bcbd22',  # Yellow-green
-        'mamba1_3blocks': '#8ecae6',      # light blue
-        'drnet_mamba1_3blocks': '#005f73',# dark blue
-        'mamba2_3blocks': '#94d2bd',
-        'drnet_mamba2_3blocks': '#0a9396',# dark cyan
-        'ant_drnn': '#ffbb78',
-        'chiang_dae': '#ff7f0e',
-    }
+    color_map = COLOR_MAP
 
     sns.set_style("whitegrid")
 
@@ -860,6 +839,10 @@ def create_improvement_heatmap(results_df, output_folder):
         plt.close()
 
         print(f"✓ Heatmap saved to: {plot_path}")
+
+# results_df = pd.read_csv('/local/home/bamorel/my_ecg_ptbxl_benchmarking/mycode/denoising/output/all_100_nbp/downstream_results/downstream_classification_results.csv')
+# output_folder = '/local/home/bamorel/my_ecg_ptbxl_benchmarking/mycode/denoising/output/all_100_nbp/downstream_results/'
+# plot_downstream_results(results_df, output_folder)
 
 
 def main():
