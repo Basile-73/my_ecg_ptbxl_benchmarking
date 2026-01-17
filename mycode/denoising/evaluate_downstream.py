@@ -719,6 +719,9 @@ def plot_downstream_results(results_df, output_folder):
     # Generate BCE plots
     plot_metric_bars(results_df, output_folder, metric='bce')
 
+    # Generate combined AUC+BCE plots
+    plot_metric_bars_combined(results_df, output_folder)
+
     # Create improvement heatmaps
     create_improvement_heatmap(results_df, output_folder, metric='auc')
     create_improvement_heatmap(results_df, output_folder, metric='bce')
@@ -911,6 +914,193 @@ def plot_metric_bars(results_df, output_folder, metric='auc'):
         plt.close()
 
         print(f"✓ {metric.upper()} visualization saved to: {plot_path}")
+
+
+def plot_metric_bars_combined(results_df, output_folder):
+    """Create combined bar plots showing both AUC and BCE metrics side by side.
+
+    Creates one PNG file per classification model with two subplots.
+
+    Args:
+        results_df: DataFrame with evaluation results
+        output_folder: Path to save plots
+    """
+    color_map = COLOR_MAP
+    sns.set_style("whitegrid")
+
+    classifiers = results_df['classification_model'].unique()
+
+    for clf_name in classifiers:
+        # Filter data for this classifier
+        clf_data = results_df[results_df['classification_model'] == clf_name].copy()
+        clf_data = clf_data[~clf_data['denoising_model'].isin(EXCLUDE_MODELS)]
+
+        # Order models
+        all_denoise_models = clf_data['denoising_model'].unique().tolist()
+        colormap_order = list(color_map.keys())
+        ordered_models = [m for m in colormap_order if m in all_denoise_models and m not in ['clean', 'noisy'] and m not in EXCLUDE_MODELS]
+        unlisted_models = [m for m in all_denoise_models if m not in color_map and m not in ['clean', 'noisy'] and m not in EXCLUDE_MODELS]
+        sorted_models = ordered_models + unlisted_models
+        if 'noisy' in all_denoise_models:
+            sorted_models = ['noisy'] + sorted_models
+        if 'clean' in all_denoise_models:
+            sorted_models = sorted_models + ['clean']
+        sorted_models = sorted_models[::-1]
+        clf_data['model_order'] = clf_data['denoising_model'].apply(lambda x: sorted_models.index(x) if x in sorted_models else len(sorted_models))
+        clf_data = clf_data.sort_values('model_order', ascending=True)
+        clf_data = clf_data.drop('model_order', axis=1)
+
+        denoise_models = clf_data['denoising_model'].values
+        n_models = len(denoise_models)
+
+        # Create figure with two subplots side by side (squeezed horizontally)
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, n_models * 0.5), sharey=True)
+
+        # Prepare display names and colors
+        colors = []
+        for model in denoise_models:
+            if model == 'clean':
+                colors.append('#ABABAB')
+            elif model == 'noisy':
+                colors.append('#808080')
+            else:
+                colors.append(color_map.get(model, '#cccccc'))
+
+        display_names = []
+        for model in denoise_models:
+            display_name = NAME_MAP.get(model, model)
+            if model in OUR_MODELS:
+                display_name = f"{display_name} (ours)"
+            display_names.append(display_name)
+
+        y_pos = np.arange(len(denoise_models))
+        y_min = -0.5
+        y_max = len(denoise_models) - 0.5
+
+        # Plot AUC (left subplot)
+        metric = 'auc'
+        auc_values = clf_data[metric].values
+        auc_lowers = clf_data[f'{metric}_lower'].values
+        auc_uppers = clf_data[f'{metric}_upper'].values
+        yerr_lower_auc = auc_values - auc_lowers
+        yerr_upper_auc = auc_uppers - auc_values
+
+        # Find baseline values for AUC
+        noisy_auc = None
+        clean_auc = None
+        for i, model in enumerate(denoise_models):
+            if model == 'noisy':
+                noisy_auc = auc_values[i]
+            elif model == 'clean':
+                clean_auc = auc_values[i]
+
+        # AUC hatched regions
+        if noisy_auc is not None:
+            ax1.fill_betweenx([y_min, y_max], 0, noisy_auc,
+                            color='lightgrey', alpha=0.2, hatch='///',
+                            edgecolor='grey', linewidth=0.5, zorder=0)
+        if clean_auc is not None:
+            ax1.fill_betweenx([y_min, y_max], clean_auc, 1.0,
+                            color='lightgrey', alpha=0.2, hatch='///',
+                            edgecolor='grey', linewidth=0.5, zorder=0)
+
+        ax1.barh(y_pos, auc_values, xerr=[yerr_lower_auc, yerr_upper_auc],
+                color=colors, alpha=0.8, edgecolor='black',
+                linewidth=1, capsize=4)
+
+        ax1.set_yticks(y_pos)
+        ax1.set_yticklabels(display_names, fontsize=plot_font_sizes['ticks'])
+        ax1.set_ylim([y_min, y_max])
+        ax1.set_xlabel('AUC (macro)', fontsize=plot_font_sizes['axis_labels'], fontweight='bold')
+        ax1.grid(True, alpha=0.3, axis='x')
+
+        # Add value labels for AUC
+        for i, (value, lower, upper) in enumerate(zip(auc_values, auc_lowers, auc_uppers)):
+            ax1.text(upper + 0.001, i, f'{value:.4f}',
+                   ha='left', va='center', fontsize=plot_font_sizes['value_labels'], fontweight='bold',
+                   bbox=dict(boxstyle='round,pad=0.3', facecolor='white',
+                            edgecolor='none', alpha=0.7))
+
+        # Set x-axis limits for AUC
+        x_min_auc = max(0.5, auc_values.min() - 0.01)
+        x_max_auc = min(1.0, auc_values.max() + 0.02)
+        ax1.set_xlim([x_min_auc, x_max_auc])
+
+        # Best AUC line
+        best_auc = 0
+        for i, model in enumerate(denoise_models):
+            if model != 'clean' and auc_values[i] > best_auc:
+                best_auc = auc_values[i]
+        if best_auc > 0:
+            ax1.axvline(x=best_auc, color='darkgrey', linestyle=':', linewidth=2,
+                      alpha=0.7, zorder=1)
+
+        # Plot BCE (right subplot)
+        metric = 'bce'
+        bce_values = clf_data[metric].values
+        bce_lowers = clf_data[f'{metric}_lower'].values
+        bce_uppers = clf_data[f'{metric}_upper'].values
+        yerr_lower_bce = bce_values - bce_lowers
+        yerr_upper_bce = bce_uppers - bce_values
+
+        # Find baseline values for BCE
+        noisy_bce = None
+        clean_bce = None
+        for i, model in enumerate(denoise_models):
+            if model == 'noisy':
+                noisy_bce = bce_values[i]
+            elif model == 'clean':
+                clean_bce = bce_values[i]
+
+        # BCE hatched regions (lower is better)
+        if noisy_bce is not None:
+            x_max_limit = bce_values.max() * 1.1
+            ax2.fill_betweenx([y_min, y_max], noisy_bce, x_max_limit,
+                            color='lightgrey', alpha=0.2, hatch='///',
+                            edgecolor='grey', linewidth=0.5, zorder=0)
+        if clean_bce is not None:
+            ax2.fill_betweenx([y_min, y_max], 0, clean_bce,
+                            color='lightgrey', alpha=0.2, hatch='///',
+                            edgecolor='grey', linewidth=0.5, zorder=0)
+
+        ax2.barh(y_pos, bce_values, xerr=[yerr_lower_bce, yerr_upper_bce],
+                color=colors, alpha=0.8, edgecolor='black',
+                linewidth=1, capsize=4)
+
+        ax2.set_ylim([y_min, y_max])
+        ax2.set_xlabel('BCE (Binary Cross Entropy)', fontsize=plot_font_sizes['axis_labels'], fontweight='bold')
+        ax2.grid(True, alpha=0.3, axis='x')
+
+        # Add value labels for BCE (on the left of lower bound)
+        for i, (value, lower, upper) in enumerate(zip(bce_values, bce_lowers, bce_uppers)):
+            ax2.text(lower - 0.001, i, f'{value:.4f}',
+                   ha='right', va='center', fontsize=plot_font_sizes['value_labels'], fontweight='bold',
+                   bbox=dict(boxstyle='round,pad=0.3', facecolor='white',
+                            edgecolor='none', alpha=0.7))
+
+        # Set x-axis limits for BCE
+        x_min_bce = max(0, bce_values.min() - 0.02)
+        x_max_bce = bce_values.max() + 0.02
+        ax2.set_xlim([x_min_bce, x_max_bce])
+
+        # Best BCE line (minimum)
+        best_bce = float('inf')
+        for i, model in enumerate(denoise_models):
+            if model != 'clean' and bce_values[i] < best_bce:
+                best_bce = bce_values[i]
+        if best_bce != float('inf'):
+            ax2.axvline(x=best_bce, color='darkgrey', linestyle=':', linewidth=2,
+                      alpha=0.7, zorder=1)
+
+        plt.tight_layout()
+
+        # Save combined plot
+        safe_clf_name = clf_name.replace('/', '_').replace('\\', '_')
+        plot_path = os.path.join(output_folder, f'downstream_combined_{safe_clf_name}.png')
+        plt.savefig(plot_path, dpi=300, bbox_inches='tight')
+        plt.close()
+
+        print(f"✓ Combined AUC+BCE visualization saved to: {plot_path}")
 
 
 def create_improvement_heatmap(results_df, output_folder, metric='auc'):
