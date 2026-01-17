@@ -35,7 +35,7 @@ from utils.utils import load_dataset, apply_standardizer
 
 sys.path.insert(0, os.path.join(script_dir, '../../'))
 from new_code.utils.getters import get_model
-from new_code.visualisation.maps import COLOR_MAP, OUR_MODELS, NAME_MAP, EXCLUDE_MODELS, CLASSIFICATION_MODEL_NAMES, CLASSIFICATION_MODEL_NAMES
+from new_code.visualisation.maps import COLOR_MAP, OUR_MODELS, NAME_MAP, EXCLUDE_MODELS, CLASSIFICATION_MODEL_NAMES, CLASSIFICATION_MODEL_NAMES, plot_font_sizes
 
 
 def load_config(config_path='code/denoising/configs/denoising_config.yaml'):
@@ -766,18 +766,18 @@ def plot_downstream_results(results_df, output_folder):
                       linewidth=1, capsize=4)
 
         ax.set_yticks(y_pos)
-        ax.set_yticklabels(display_names, fontsize=13)
+        ax.set_yticklabels(display_names, fontsize=plot_font_sizes['ticks'])
         ax.set_ylim([y_min, y_max])
-        ax.set_xlabel('AUC (macro)', fontsize=15, fontweight='bold')
+        ax.set_xlabel('AUC (macro)', fontsize=plot_font_sizes['axis_labels'], fontweight='bold')
         clf_display_name = CLASSIFICATION_MODEL_NAMES.get(clf_name, clf_name)
-        ax.set_title(f'Downstream ECG Classification Performance - {clf_display_name}',
-                    fontsize=17, fontweight='bold', pad=15)
+        # ax.set_title(f'Downstream ECG Classification Performance - {clf_display_name}',
+        #             fontsize=plot_font_sizes['title'], fontweight='bold', pad=15)
         ax.grid(True, alpha=0.3, axis='x')
 
         # Add value labels above upper confidence interval
         for i, (auc, lower, upper) in enumerate(zip(aucs, auc_lowers, auc_uppers)):
             ax.text(upper + 0.001, i, f'{auc:.4f}',
-                   ha='left', va='center', fontsize=12, fontweight='bold',
+                   ha='left', va='center', fontsize=plot_font_sizes['value_labels'], fontweight='bold',
                    bbox=dict(boxstyle='round,pad=0.3', facecolor='white',
                             edgecolor='none', alpha=0.7))
 
@@ -891,9 +891,9 @@ def create_improvement_heatmap(results_df, output_folder):
 
         print(f"✓ Heatmap saved to: {plot_path}")
 
-results_df = pd.read_csv('/local/home/bamorel/my_ecg_ptbxl_benchmarking/mycode/denoising/output/all_100_nbp/downstream_results/downstream_classification_results.csv')
-output_folder = '/local/home/bamorel/my_ecg_ptbxl_benchmarking/mycode/denoising/output/all_100_nbp/downstream_results/'
-plot_downstream_results(results_df, output_folder)
+# results_df = pd.read_csv('/local/home/bamorel/my_ecg_ptbxl_benchmarking/mycode/denoising/output/all_100_nbp/downstream_results/downstream_classification_results.csv')
+# output_folder = '/local/home/bamorel/my_ecg_ptbxl_benchmarking/mycode/denoising/output/all_100_nbp/downstream_results/'
+# plot_downstream_results(results_df, output_folder)
 
 
 def main():
