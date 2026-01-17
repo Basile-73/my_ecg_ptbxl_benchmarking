@@ -41,8 +41,15 @@ NAME_MAP = {
     'mecge_phase': 'MECGE-Phase',
     'mecge_phase_250': 'MECGE-Phase-250',
     'mecge': 'MECGE',
-    'mamba1_3blocks': 'UNet Mamba1-3Blocks',
-    'drnet_mamba1_3blocks': 'DRNET Mamba1-3Blocks',
-    'mamba2_3blocks': 'UNet Mamba2-3Blocks',
-    'drnet_mamba2_3blocks': 'DRNET Mamba2-3Blocks',
+    'mamba1_3blocks': 'UNet Mamba1-3B',
+    'drnet_mamba1_3blocks': 'DRNET Mamba1-3B',
+    'mamba2_3blocks': 'UNet Mamba2-3B',
+    'drnet_mamba2_3blocks': 'DRNET Mamba2-3B',
 }
+
+OUR_MODELS = [
+    'mamba1_3blocks',
+    'drnet_mamba1_3blocks',
+    'mamba2_3blocks',
+    'drnet_mamba2_3blocks',
+]
