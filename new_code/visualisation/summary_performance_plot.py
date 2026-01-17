@@ -3,17 +3,17 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 
-from maps import COLOR_MAP, NAME_MAP
+from maps import COLOR_MAP, NAME_MAP, plot_font_sizes
 
-choice = 'synthetic'
+choice = 'sinus'
 legend = True
 save_figure = True
 save_table = False
 
 
 models = [
-    'ant_drnn',
     'chiang_dae',
+    'ant_drnn',
     'mecge_phase',
     'unet',
     'drnet_unet',
@@ -52,7 +52,7 @@ if save_table:
 out = all_results
 
 fig, axes = plt.subplots(1, 2, figsize=(len(models)*1, 5))
-#fig.suptitle("Model Performance", fontsize=16, fontweight="bold")
+#fig.suptitle("Model Performance", fontsize=plot_font_sizes['title'], fontweight="bold")
 
 handles = []
 
@@ -83,11 +83,11 @@ for ax, metric in zip(axes, ["RMSE", "SNR"]):
             i,
             means[i] + yhigh[i] + text_pad,
             f"{means[i]:.3f}" if metric == "RMSE" else f"{means[i]:.2f}",
-            ha="center", va="bottom", fontsize=11, rotation=90
+            ha="center", va="bottom", fontsize=plot_font_sizes['value_labels'], rotation=90
         )
 
     ymin = (means - ylow).min() * 0.95
-    ymax = (means + yhigh).max() + text_pad * 13
+    ymax = (means + yhigh).max() + text_pad * 17
     ax.set_ylim(ymin, ymax)
 
     # Add dotted horizontal line for best performing model
@@ -95,10 +95,11 @@ for ax, metric in zip(axes, ["RMSE", "SNR"]):
     ax.axhline(y=best_value, color='grey', linestyle=':', linewidth=2, alpha=0.7, label='Best')
 
     #ax.set_title(f"{metric} (95% CI)", fontweight="bold")
-    ax.set_ylabel(metric, fontweight="bold", fontsize=14)
+    ax.set_ylabel(metric, fontweight="bold", fontsize=plot_font_sizes['axis_labels'])
     ax.set_xticks(range(len(models)))
     #ax.set_xticklabels(models, rotation=90)
     ax.set_xticks([])
+    ax.tick_params(axis='both', which='major', labelsize=plot_font_sizes['ticks'])
     ax.grid(True, axis="y", alpha=0.3)
 
 # Create legend labels with "(ours)" for mamba models
@@ -107,7 +108,7 @@ legend_labels = [f"{NAME_MAP.get(m, m)} (ours)" if 'mamba' in m and 'drnet' not 
                  NAME_MAP.get(m, m) for m in models]
 
 if legend == True:
-    fig.legend(handles, legend_labels, loc="lower center", bbox_to_anchor=(0.54, -0.1), ncol=len(models)//2, frameon=True, fontsize=11)
+    fig.legend(handles, legend_labels, loc="lower center", bbox_to_anchor=(0.54, -0.1), ncol=len(models)//2, frameon=True, fontsize=plot_font_sizes['legend'])
 plt.tight_layout(rect=[0, 0.05, 1, 1])
 
 if save_figure:

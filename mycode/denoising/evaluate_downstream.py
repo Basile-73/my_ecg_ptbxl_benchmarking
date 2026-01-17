@@ -35,6 +35,7 @@ from utils.utils import load_dataset, apply_standardizer
 
 sys.path.insert(0, os.path.join(script_dir, '../../'))
 from new_code.utils.getters import get_model
+from new_code.visualisation.maps import COLOR_MAP, OUR_MODELS, NAME_MAP, EXCLUDE_MODELS, CLASSIFICATION_MODEL_NAMES, CLASSIFICATION_MODEL_NAMES, plot_font_sizes
 
 
 def load_config(config_path='code/denoising/configs/denoising_config.yaml'):
@@ -667,29 +668,7 @@ def plot_downstream_results(results_df, output_folder):
     """
 
     # Comprehensive color map for consistent styling across all plots
-    color_map = { # TODO: Update colormap
-        'noisy_input': '#808080',  # Grey (baseline)
-        'fcn': '#aec7e8',         # Light blue (Stage1)
-        'drnet_fcn': '#1f77b4',   # Dark blue (Stage2)
-        'unet': '#ff9896',        # Light red (Stage1)
-        'drnet_unet': '#d62728',  # Dark red (Stage2)
-        'imunet': '#98df8a',      # Light green (Stage1)
-        'drnet_imunet': '#2ca02c', # Dark green (Stage2)
-        'imunet_origin': '#9467bd',    # Purple
-        'mecge_phase': '#C91CB5',
-        'mecge': '#C91CB5',
-        'imunet_mamba_bn': '#ff7f0e',  # Orange
-        # 'imunet_mamba_bottleneck': '#1C8AC9',  # Orange
-        # 'imunet_mamba_up': '#17becf',  # Cyan/Teal
-        # 'imunet_mamba_early': '#391CC9', # Magenta/Pink
-        # 'imunet_mamba_late': '#bcbd22',  # Yellow-green
-        'mamba1_3blocks': '#8ecae6',      # light blue
-        'drnet_mamba1_3blocks': '#005f73',# dark blue
-        'mamba2_3blocks': '#94d2bd',
-        'drnet_mamba2_3blocks': '#0a9396',# dark cyan
-        'ant_drnn': '#ffbb78',
-        'chiang_dae': '#ff7f0e',
-    }
+    color_map = COLOR_MAP
 
     sns.set_style("whitegrid")
 
@@ -702,18 +681,25 @@ def plot_downstream_results(results_df, output_folder):
         # Filter data for this classifier
         clf_data = results_df[results_df['classification_model'] == clf_name].copy()
 
+        # Exclude models that are in EXCLUDE_MODELS
+        clf_data = clf_data[~clf_data['denoising_model'].isin(EXCLUDE_MODELS)]
+
         # Order models according to colormap for consistent visual grouping
         all_denoise_models = clf_data['denoising_model'].unique().tolist()
         colormap_order = list(color_map.keys())
-        # Filter to include only models that are in the data (excluding 'clean' and 'noisy')
-        ordered_models = [m for m in colormap_order if m in all_denoise_models and m not in ['clean', 'noisy']]
-        # Find any models not in the colormap
-        unlisted_models = [m for m in all_denoise_models if m not in color_map and m not in ['clean', 'noisy']]
+        # Filter to include only models that are in the data (excluding 'clean', 'noisy', and excluded models)
+        ordered_models = [m for m in colormap_order if m in all_denoise_models and m not in ['clean', 'noisy'] and m not in EXCLUDE_MODELS]
+        # Find any models not in the colormap (excluding excluded models)
+        unlisted_models = [m for m in all_denoise_models if m not in color_map and m not in ['clean', 'noisy'] and m not in EXCLUDE_MODELS]
         # Combine them: colormap order first, then unlisted
         sorted_models = ordered_models + unlisted_models
-        # Prepend baseline models at the beginning
-        baseline_models = [m for m in ['clean', 'noisy'] if m in all_denoise_models]
-        sorted_models = baseline_models + sorted_models
+        # Add baseline models: noisy first, clean last
+        if 'noisy' in all_denoise_models:
+            sorted_models = ['noisy'] + sorted_models
+        if 'clean' in all_denoise_models:
+            sorted_models = sorted_models + ['clean']
+        # Reverse the order for plotting (bottom to top)
+        sorted_models = sorted_models[::-1]
         # Reorder DataFrame
         clf_data['model_order'] = clf_data['denoising_model'].apply(lambda x: sorted_models.index(x) if x in sorted_models else len(sorted_models))
         clf_data = clf_data.sort_values('model_order', ascending=True)
@@ -739,31 +725,75 @@ def plot_downstream_results(results_df, output_folder):
             else:
                 colors.append(color_map.get(model, '#cccccc'))  # Use color_map, default to grey
 
+        # Create display names using NAME_MAP and add (ours) for our models
+        display_names = []
+        for model in denoise_models:
+            display_name = NAME_MAP.get(model, model)
+            if model in OUR_MODELS:
+                display_name = f"{display_name} (ours)"
+            display_names.append(display_name)
+
         # Create horizontal bar plot
         y_pos = np.arange(len(denoise_models))
+
+        # Find baseline AUC values
+        noisy_auc = None
+        clean_auc = None
+        for i, model in enumerate(denoise_models):
+            if model == 'noisy':
+                noisy_auc = aucs[i]
+            elif model == 'clean':
+                clean_auc = aucs[i]
+
+        # Add hatched regions covering entire plot height (in background)
+        y_min = -0.5
+        y_max = len(denoise_models) - 0.5
+
+        # Hatched region between 0 and noisy baseline
+        if noisy_auc is not None:
+            ax.fill_betweenx([y_min, y_max], 0, noisy_auc,
+                            color='lightgrey', alpha=0.2, hatch='///',
+                            edgecolor='grey', linewidth=0.5, zorder=0)
+
+        # Hatched region between clean baseline and x-axis max limit
+        if clean_auc is not None:
+            ax.fill_betweenx([y_min, y_max], clean_auc, 1.0,
+                            color='lightgrey', alpha=0.2, hatch='///',
+                            edgecolor='grey', linewidth=0.5, zorder=0)
+
         bars = ax.barh(y_pos, aucs, xerr=[yerr_lower, yerr_upper],
                       color=colors, alpha=0.8, edgecolor='black',
                       linewidth=1, capsize=4)
 
         ax.set_yticks(y_pos)
-        ax.set_yticklabels(denoise_models, fontsize=13)
-        ax.set_xlabel('AUC (macro)', fontsize=15, fontweight='bold')
-        ax.set_title(f'Downstream ECG Classification Performance - {clf_name}',
-                    fontsize=17, fontweight='bold', pad=15)
+        ax.set_yticklabels(display_names, fontsize=plot_font_sizes['ticks'])
+        ax.set_ylim([y_min, y_max])
+        ax.set_xlabel('AUC (macro)', fontsize=plot_font_sizes['axis_labels'], fontweight='bold')
+        clf_display_name = CLASSIFICATION_MODEL_NAMES.get(clf_name, clf_name)
+        # ax.set_title(f'Downstream ECG Classification Performance - {clf_display_name}',
+        #             fontsize=plot_font_sizes['title'], fontweight='bold', pad=15)
         ax.grid(True, alpha=0.3, axis='x')
 
         # Add value labels above upper confidence interval
         for i, (auc, lower, upper) in enumerate(zip(aucs, auc_lowers, auc_uppers)):
-            ax.text(upper + 0.01, i, f'{auc:.4f}',
-                   ha='left', va='center', fontsize=12, fontweight='bold',
+            ax.text(upper + 0.001, i, f'{auc:.4f}',
+                   ha='left', va='center', fontsize=plot_font_sizes['value_labels'], fontweight='bold',
                    bbox=dict(boxstyle='round,pad=0.3', facecolor='white',
                             edgecolor='none', alpha=0.7))
 
-        # Set x-axis limits (increased max to accommodate rotated text)
-        all_values = np.concatenate([auc_lowers, auc_uppers])
-        x_min = max(0.5, all_values.min() - 0.02)
-        x_max = min(1.0, all_values.max() + 0.08)
+        # Set x-axis limits dynamically based on best and worst performing models
+        x_min = max(0.5, aucs.min() - 0.01)
+        x_max = min(1.0, aucs.max() + 0.02)
         ax.set_xlim([x_min, x_max])
+
+        # Add vertical dotted line at the best performing model (excluding clean)
+        best_auc = 0
+        for i, model in enumerate(denoise_models):
+            if model != 'clean' and aucs[i] > best_auc:
+                best_auc = aucs[i]
+        if best_auc > 0:
+            ax.axvline(x=best_auc, color='darkgrey', linestyle=':', linewidth=2,
+                      alpha=0.7, zorder=1, label=f'Best: {best_auc:.4f}')
 
         plt.tight_layout()
 
@@ -860,6 +890,10 @@ def create_improvement_heatmap(results_df, output_folder):
         plt.close()
 
         print(f"✓ Heatmap saved to: {plot_path}")
+
+# results_df = pd.read_csv('/local/home/bamorel/my_ecg_ptbxl_benchmarking/mycode/denoising/output/all_100_nbp/downstream_results/downstream_classification_results.csv')
+# output_folder = '/local/home/bamorel/my_ecg_ptbxl_benchmarking/mycode/denoising/output/all_100_nbp/downstream_results/'
+# plot_downstream_results(results_df, output_folder)
 
 
 def main():

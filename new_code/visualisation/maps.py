@@ -1,9 +1,12 @@
 COLOR_MAP = {
     'noisy_input': '#808080',  # Grey (baseline)
-    'ant_drnn': '#ffbb78',
     'chiang_dae': '#ff7f0e',
+    'ant_drnn': '#ffbb78',
     'fcn': '#aec7e8',         # Light blue (Stage1)
     'drnet_fcn': '#1f77b4',   # Dark blue (Stage2)
+    'mecge_phase': '#f6c453',      # warm golden yellow
+    'mecge': '#f6c453',
+    'mecge_phase_250': '#e0a800',  # deeper amber
     'unet': '#ff9896',
     # 'unet_mamba': '#cc7675',
     # 'unet_mamba - unet': '#cc7675',
@@ -15,8 +18,6 @@ COLOR_MAP = {
     'imunet_mamba_bidir': '#3d7f3d',
     'drnet_imunet': '#2ca02c', # Dark green (Stage2)
     'imunet_origin': '#9467bd',    # Purple
-    'mecge_phase': '#f6c453',      # warm golden yellow
-    'mecge_phase_250': '#e0a800',  # deeper amber
     # 'imunet_mamba_bn': '#ff7f0e',  # Orange
     # 'imunet_mamba_bottleneck': '#1C8AC9',  # Cyan-blue
     # 'imunet_mamba_up': '#17becf',  # Cyan/Teal
@@ -53,3 +54,25 @@ OUR_MODELS = [
     'mamba2_3blocks',
     'drnet_mamba2_3blocks',
 ]
+
+EXCLUDE_MODELS = [
+    'mamba2_3blocks',
+    'drnet_mamba2_3blocks',
+]
+
+CLASSIFICATION_MODEL_NAMES = {
+    'fastai_xresnet1d101': 'FastAI XResNet1D-101',
+    'astai_resnet1d_wang': 'FastAI ResNet1D-Wang',
+    'fastai_lstm': 'FastAI LSTM',
+    'fastai_lstm_bidir': 'FastAI BiLSTM',
+    'fastai_fcn_wang': 'FastAI FCN-Wang',
+    'fastai_inception1d': 'FastAI Inception1D',
+}
+
+plot_font_sizes = {
+    'title': 16,
+    'value_labels': 14,
+    'axis_labels': 14,
+    'legend': 11,
+    'ticks': 14,
+}
