@@ -954,7 +954,7 @@ def plot_metric_bars_combined(results_df, output_folder):
         n_models = len(denoise_models)
 
         # Create figure with two subplots side by side (squeezed horizontally)
-        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, n_models * 0.5), sharey=True)
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, n_models * 0.5), sharey=True)
 
         # Prepare display names and colors
         colors = []
@@ -1092,13 +1092,13 @@ def plot_metric_bars_combined(results_df, output_folder):
             ax2.axvline(x=best_bce, color='darkgrey', linestyle=':', linewidth=2,
                       alpha=0.7, zorder=1)
 
-        plt.tight_layout()
+        fig.tight_layout()
 
         # Save combined plot
         safe_clf_name = clf_name.replace('/', '_').replace('\\', '_')
         plot_path = os.path.join(output_folder, f'downstream_combined_{safe_clf_name}.png')
-        plt.savefig(plot_path, dpi=300, bbox_inches='tight')
-        plt.close()
+        fig.savefig(plot_path, dpi=300, bbox_inches='tight')
+        plt.close(fig)
 
         print(f"✓ Combined AUC+BCE visualization saved to: {plot_path}")
 
