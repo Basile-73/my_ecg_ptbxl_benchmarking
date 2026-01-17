@@ -35,7 +35,7 @@ from utils.utils import load_dataset, apply_standardizer
 
 sys.path.insert(0, os.path.join(script_dir, '../../'))
 from new_code.utils.getters import get_model
-from new_code.visualisation.maps import COLOR_MAP, OUR_MODELS, NAME_MAP, EXCLUDE_MODELS
+from new_code.visualisation.maps import COLOR_MAP, OUR_MODELS, NAME_MAP, EXCLUDE_MODELS, CLASSIFICATION_MODEL_NAMES, CLASSIFICATION_MODEL_NAMES
 
 
 def load_config(config_path='code/denoising/configs/denoising_config.yaml'):
@@ -769,7 +769,8 @@ def plot_downstream_results(results_df, output_folder):
         ax.set_yticklabels(display_names, fontsize=13)
         ax.set_ylim([y_min, y_max])
         ax.set_xlabel('AUC (macro)', fontsize=15, fontweight='bold')
-        ax.set_title(f'Downstream ECG Classification Performance - {clf_name}',
+        clf_display_name = CLASSIFICATION_MODEL_NAMES.get(clf_name, clf_name)
+        ax.set_title(f'Downstream ECG Classification Performance - {clf_display_name}',
                     fontsize=17, fontweight='bold', pad=15)
         ax.grid(True, alpha=0.3, axis='x')
 

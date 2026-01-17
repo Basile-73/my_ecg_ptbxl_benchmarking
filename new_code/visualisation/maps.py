@@ -59,3 +59,12 @@ EXCLUDE_MODELS = [
     'mamba2_3blocks',
     'drnet_mamba2_3blocks',
 ]
+
+CLASSIFICATION_MODEL_NAMES = {
+    'fastai_xresnet1d101': 'FastAI XResNet1D-101',
+    'astai_resnet1d_wang': 'FastAI ResNet1D-Wang',
+    'fastai_lstm': 'FastAI LSTM',
+    'fastai_lstm_bidir': 'FastAI BiLSTM',
+    'fastai_fcn_wang': 'FastAI FCN-Wang',
+    'fastai_inception1d': 'FastAI Inception1D',
+}
