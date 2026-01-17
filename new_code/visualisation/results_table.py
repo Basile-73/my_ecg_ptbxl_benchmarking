@@ -1,5 +1,6 @@
 import pandas as pd
 from pathlib import Path
+from maps import NAME_MAP
 
 # Directory containing the CSV files
 csv_dir = Path('/local/home/bamorel/my_ecg_ptbxl_benchmarking/new_code/outputs/AAA_tabels')
@@ -41,6 +42,9 @@ print(combined_df.head())
 
 # Pivot to get model as rows, and (dataset, metric) as multi-index columns
 pivoted_df = combined_df.pivot(index='model', columns=['dataset', 'metric'], values='text')
+
+# Map model names using NAME_MAP
+pivoted_df.index = pivoted_df.index.map(lambda x: NAME_MAP.get(x, x))
 
 print("\nPivoted table:")
 print(pivoted_df.head())
@@ -96,7 +100,7 @@ print("\nLaTeX table:")
 print(latex_table)
 
 # Optional: Save the combined dataframe
-# combined_df.to_csv('combined_results.csv', index=False)
-# pivoted_df.to_csv('pivoted_results.csv')
-# with open('results_table.tex', 'w') as f:
-#     f.write(latex_table)
+results_path = os.path.join(csv_dir, 'aggregated')
+pivoted_df.to_csv(os.path.join(results_path, 'pivoted_results.csv'))
+with open(os.path.join(results_path, 'results_table.tex'), 'w') as f:
+    f.write(latex_table)

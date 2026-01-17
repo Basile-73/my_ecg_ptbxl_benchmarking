@@ -3,11 +3,11 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 
-from colormap import COLOR_MAP
+from maps import COLOR_MAP, NAME_MAP
 
-choice = 'ptb-xl'
-legend = False
-save_figure = False
+choice = 'synthetic'
+legend = True
+save_figure = True
 save_table = False
 
 
@@ -102,9 +102,9 @@ for ax, metric in zip(axes, ["RMSE", "SNR"]):
     ax.grid(True, axis="y", alpha=0.3)
 
 # Create legend labels with "(ours)" for mamba models
-legend_labels = [f"{m} (ours)" if 'mamba' in m and 'drnet' not in m else
-                 f"{m} (ours)" if m == 'drnet_mamba1_3blocks' or m == 'drnet_mamba2_3blocks' else
-                 m for m in models]
+legend_labels = [f"{NAME_MAP.get(m, m)} (ours)" if 'mamba' in m and 'drnet' not in m else
+                 f"{NAME_MAP.get(m, m)} (ours)" if m == 'drnet_mamba1_3blocks' or m == 'drnet_mamba2_3blocks' else
+                 NAME_MAP.get(m, m) for m in models]
 
 if legend == True:
     fig.legend(handles, legend_labels, loc="lower center", bbox_to_anchor=(0.54, -0.1), ncol=len(models)//2, frameon=True, fontsize=11)

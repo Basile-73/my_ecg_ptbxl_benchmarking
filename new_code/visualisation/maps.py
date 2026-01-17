@@ -27,3 +27,22 @@ COLOR_MAP = {
     'mamba2_3blocks': '#c77dff',        # light purple
     'drnet_mamba2_3blocks': '#5a189a',  # dark purple
 }
+
+NAME_MAP = {
+    'noisy_input': 'Noisy Input',
+    'ant_drnn': 'DRNN',
+    'chiang_dae': 'DAE',
+    'fcn': 'FCN',
+    'drnet_fcn': 'DRNET-FCN',
+    'unet': 'UNet',
+    'drnet_unet': 'DRNET-UNet',
+    'imunet': 'IMUNet',
+    'drnet_imunet': 'DRNET-IMUNet',
+    'mecge_phase': 'MECGE-Phase',
+    'mecge_phase_250': 'MECGE-Phase-250',
+    'mecge': 'MECGE',
+    'mamba1_3blocks': 'UNet Mamba1-3Blocks',
+    'drnet_mamba1_3blocks': 'DRNET Mamba1-3Blocks',
+    'mamba2_3blocks': 'UNet Mamba2-3Blocks',
+    'drnet_mamba2_3blocks': 'DRNET Mamba2-3Blocks',
+}
