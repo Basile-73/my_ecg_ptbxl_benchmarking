@@ -690,9 +690,11 @@ def plot_downstream_results(results_df, output_folder):
         unlisted_models = [m for m in all_denoise_models if m not in color_map and m not in ['clean', 'noisy']]
         # Combine them: colormap order first, then unlisted
         sorted_models = ordered_models + unlisted_models
-        # Prepend baseline models at the beginning
-        baseline_models = [m for m in ['clean', 'noisy'] if m in all_denoise_models]
-        sorted_models = baseline_models + sorted_models
+        # Add baseline models: noisy first, clean last
+        if 'noisy' in all_denoise_models:
+            sorted_models = ['noisy'] + sorted_models
+        if 'clean' in all_denoise_models:
+            sorted_models = sorted_models + ['clean']
         # Reverse the order for plotting (bottom to top)
         sorted_models = sorted_models[::-1]
         # Reorder DataFrame
@@ -730,12 +732,39 @@ def plot_downstream_results(results_df, output_folder):
 
         # Create horizontal bar plot
         y_pos = np.arange(len(denoise_models))
+
+        # Find baseline AUC values
+        noisy_auc = None
+        clean_auc = None
+        for i, model in enumerate(denoise_models):
+            if model == 'noisy':
+                noisy_auc = aucs[i]
+            elif model == 'clean':
+                clean_auc = aucs[i]
+
+        # Add hatched regions covering entire plot height (in background)
+        y_min = -0.5
+        y_max = len(denoise_models) - 0.5
+
+        # Hatched region between 0 and noisy baseline
+        if noisy_auc is not None:
+            ax.fill_betweenx([y_min, y_max], 0, noisy_auc,
+                            color='lightgrey', alpha=0.2, hatch='///',
+                            edgecolor='grey', linewidth=0.5, zorder=0)
+
+        # Hatched region between clean baseline and x-axis max limit
+        if clean_auc is not None:
+            ax.fill_betweenx([y_min, y_max], clean_auc, 1.0,
+                            color='lightgrey', alpha=0.2, hatch='///',
+                            edgecolor='grey', linewidth=0.5, zorder=0)
+
         bars = ax.barh(y_pos, aucs, xerr=[yerr_lower, yerr_upper],
                       color=colors, alpha=0.8, edgecolor='black',
                       linewidth=1, capsize=4)
 
         ax.set_yticks(y_pos)
         ax.set_yticklabels(display_names, fontsize=13)
+        ax.set_ylim([y_min, y_max])
         ax.set_xlabel('AUC (macro)', fontsize=15, fontweight='bold')
         ax.set_title(f'Downstream ECG Classification Performance - {clf_name}',
                     fontsize=17, fontweight='bold', pad=15)
@@ -752,6 +781,15 @@ def plot_downstream_results(results_df, output_folder):
         x_min = max(0.5, aucs.min() - 0.01)
         x_max = min(1.0, aucs.max() + 0.02)
         ax.set_xlim([x_min, x_max])
+
+        # Add vertical dotted line at the best performing model (excluding clean)
+        best_auc = 0
+        for i, model in enumerate(denoise_models):
+            if model != 'clean' and aucs[i] > best_auc:
+                best_auc = aucs[i]
+        if best_auc > 0:
+            ax.axvline(x=best_auc, color='darkgrey', linestyle=':', linewidth=2,
+                      alpha=0.7, zorder=1, label=f'Best: {best_auc:.4f}')
 
         plt.tight_layout()
 
