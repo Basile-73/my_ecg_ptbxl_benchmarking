@@ -141,7 +141,7 @@ class Evaluator:
 
     @cached_property
     def results(self):
-        rmses, snrs = [], []
+        rmses, snrs, pccs = [], [], []
 
         self.model.eval()
         for noisy, clean in self.eval_data_loader:
@@ -153,14 +153,20 @@ class Evaluator:
             rmses.extend(np.sqrt((err**2).mean(axis=1)))
             snrs.extend(10*np.log10((clean**2).mean(axis=1)/(err**2).mean(axis=1)))
 
+            # Calculate PCC for each sample
+            for i in range(len(clean)):
+                pcc = np.corrcoef(clean[i], denoised[i])[0, 1]
+                pccs.append(pcc)
+
         ci_rmses = get_percentiles(rmses)
         ci_snrs = get_percentiles(snrs)
+        ci_pccs = get_percentiles(pccs)
 
         return pd.DataFrame({
-            "metric": ["RMSE", "SNR"],
-            "mean": [np.mean(rmses), np.mean(snrs)],
-            "ci_low": [ci_rmses[0], ci_snrs[0]],
-            "ci_high": [ci_rmses[1], ci_snrs[1]],
+            "metric": ["RMSE", "SNR", "PCC"],
+            "mean": [np.mean(rmses), np.mean(snrs), np.mean(pccs)],
+            "ci_low": [ci_rmses[0], ci_snrs[0], ci_pccs[0]],
+            "ci_high": [ci_rmses[1], ci_snrs[1], ci_pccs[1]],
         })
 
     def save_results(self):
@@ -213,7 +219,7 @@ class Stage2Evaluator(Evaluator):
 
     @cached_property
     def results(self):
-        rmses, snrs = [], []
+        rmses, snrs, pccs = [], [], []
 
         self.model.eval()
         for noisy, clean in self.eval_data_loader:
@@ -227,14 +233,20 @@ class Stage2Evaluator(Evaluator):
             rmses.extend(np.sqrt((err**2).mean(axis=1)))
             snrs.extend(10*np.log10((clean**2).mean(axis=1)/(err**2).mean(axis=1)))
 
+            # Calculate PCC for each sample
+            for i in range(len(clean)):
+                pcc = np.corrcoef(clean[i], denoised[i])[0, 1]
+                pccs.append(pcc)
+
         ci_rmses = get_percentiles(rmses)
         ci_snrs = get_percentiles(snrs)
+        ci_pccs = get_percentiles(pccs)
 
         return pd.DataFrame({
-            "metric": ["RMSE", "SNR"],
-            "mean": [np.mean(rmses), np.mean(snrs)],
-            "ci_low": [ci_rmses[0], ci_snrs[0]],
-            "ci_high": [ci_rmses[1], ci_snrs[1]],
+            "metric": ["RMSE", "SNR", "PCC"],
+            "mean": [np.mean(rmses), np.mean(snrs), np.mean(pccs)],
+            "ci_low": [ci_rmses[0], ci_snrs[0], ci_pccs[0]],
+            "ci_high": [ci_rmses[1], ci_snrs[1], ci_pccs[1]],
         })
 
 # # example usage
