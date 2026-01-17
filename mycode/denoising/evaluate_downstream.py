@@ -954,7 +954,7 @@ def plot_metric_bars_combined(results_df, output_folder):
         n_models = len(denoise_models)
 
         # Create figure with two subplots side by side (squeezed horizontally)
-        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, n_models * 0.5), sharey=True)
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(9, n_models * 0.5), sharey=True)
 
         # Prepare display names and colors
         colors = []
@@ -976,6 +976,9 @@ def plot_metric_bars_combined(results_df, output_folder):
         y_pos = np.arange(len(denoise_models))
         y_min = -0.5
         y_max = len(denoise_models) - 0.5
+
+        # Create numeric labels for y-axis (1, 2, 3, ...)
+        numeric_labels = [str(i+1) for i in range(len(denoise_models))]
 
         # Plot AUC (left subplot)
         metric = 'auc'
@@ -1008,8 +1011,7 @@ def plot_metric_bars_combined(results_df, output_folder):
                 color=colors, alpha=0.8, edgecolor='black',
                 linewidth=1, capsize=4)
 
-        ax1.set_yticks(y_pos)
-        ax1.set_yticklabels(display_names, fontsize=plot_font_sizes['ticks'])
+        ax1.set_yticks([])
         ax1.set_ylim([y_min, y_max])
         ax1.set_xlabel('AUC (macro)', fontsize=plot_font_sizes['axis_labels'], fontweight='bold')
         ax1.grid(True, alpha=0.3, axis='x')
@@ -1092,7 +1094,28 @@ def plot_metric_bars_combined(results_df, output_folder):
             ax2.axvline(x=best_bce, color='darkgrey', linestyle=':', linewidth=2,
                       alpha=0.7, zorder=1)
 
+        # Create legend below both plots
+        # Create custom legend handles with numeric labels and model names
+        from matplotlib.patches import Rectangle
+        legend_handles = []
+        legend_labels = []
+        for i, (display_name, color) in enumerate(zip(display_names, colors)):
+            legend_handles.append(Rectangle((0, 0), 1, 1, fc=color, edgecolor='black', linewidth=1, alpha=0.8))
+            legend_labels.append(f"{i+1}. {display_name}")
+
+        # Place legend below the subplots
+        fig.legend(legend_handles, legend_labels,
+                  loc='lower center',
+                  bbox_to_anchor=(0.5, -0.5),
+                  ncol=min(3, len(legend_handles)),
+                  fontsize=plot_font_sizes['ticks'],
+                  frameon=True,
+                  edgecolor='black',
+                  fancybox=False)
+
         fig.tight_layout()
+        # Adjust layout to make room for legend
+        fig.subplots_adjust(bottom=0.2)
 
         # Save combined plot
         safe_clf_name = clf_name.replace('/', '_').replace('\\', '_')
@@ -1202,9 +1225,9 @@ def create_improvement_heatmap(results_df, output_folder, metric='auc'):
 
         print(f"✓ {metric_label} heatmap saved to: {plot_path}")
 
-# results_df = pd.read_csv('/local/home/bamorel/my_ecg_ptbxl_benchmarking/mycode/denoising/output/all_100_nbp/downstream_results/downstream_classification_results.csv')
-# output_folder = '/local/home/bamorel/my_ecg_ptbxl_benchmarking/mycode/denoising/output/all_100_nbp/downstream_results/'
-# plot_downstream_results(results_df, output_folder)
+results_df = pd.read_csv('/local/home/bamorel/my_ecg_ptbxl_benchmarking/mycode/denoising/output/test/downstream_results/downstream_classification_results.csv')
+output_folder = '/local/home/bamorel/my_ecg_ptbxl_benchmarking/mycode/denoising/output/test/downstream_results/'
+plot_downstream_results(results_df, output_folder)
 
 
 def main():
