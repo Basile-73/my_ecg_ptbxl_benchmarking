@@ -1225,9 +1225,9 @@ def create_improvement_heatmap(results_df, output_folder, metric='auc'):
 
         print(f"✓ {metric_label} heatmap saved to: {plot_path}")
 
-results_df = pd.read_csv('/local/home/bamorel/my_ecg_ptbxl_benchmarking/mycode/denoising/output/test/downstream_results/downstream_classification_results.csv')
-output_folder = '/local/home/bamorel/my_ecg_ptbxl_benchmarking/mycode/denoising/output/test/downstream_results/'
-plot_downstream_results(results_df, output_folder)
+# results_df = pd.read_csv('/local/home/bamorel/my_ecg_ptbxl_benchmarking/mycode/denoising/output/test/downstream_results/downstream_classification_results.csv')
+# output_folder = '/local/home/bamorel/my_ecg_ptbxl_benchmarking/mycode/denoising/output/test/downstream_results/'
+# plot_downstream_results(results_df, output_folder)
 
 
 def main():
