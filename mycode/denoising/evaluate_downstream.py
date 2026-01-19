@@ -265,7 +265,7 @@ def evaluate_downstream(config_path='code/denoising/configs/denoising_config.yam
     n_bootstraps = config['evaluation']['bootstrap_samples']
 
     # Create results folder
-    results_folder = os.path.join(denoising_exp_folder, 'downstream_results')
+    results_folder = os.path.join(denoising_exp_folder, 'downstream_results', base_exp)
     os.makedirs(results_folder, exist_ok=True)
 
     # Setup device
@@ -547,7 +547,7 @@ def evaluate_downstream(config_path='code/denoising/configs/denoising_config.yam
         })
 
         per_class_roc = roc_by_class(y_val, y_pred_clean, mlb, n_bootstraps=n_bootstraps, densoising_model_name='clean', classifyer_name=clf_name)
-        per_class_results.append(per_class_roc)
+        per_class_results.extend(per_class_roc)
 
         print(f"  AUC: {auc_point:.4f} (95% CI: [{ci['lower']:.4f}, {ci['upper']:.4f}])")
         print(f"  BCE: {bce_point:.4f} (95% CI: [{bce_ci['lower']:.4f}, {bce_ci['upper']:.4f}])")
@@ -587,7 +587,7 @@ def evaluate_downstream(config_path='code/denoising/configs/denoising_config.yam
         })
 
         per_class_roc = roc_by_class(y_val, y_pred_clean, mlb, n_bootstraps=n_bootstraps, densoising_model_name='noisy', classifyer_name=clf_name)
-        per_class_results.append(per_class_roc)
+        per_class_results.extend(per_class_roc)
 
         print(f"  AUC: {auc_point:.4f} (95% CI: [{ci['lower']:.4f}, {ci['upper']:.4f}])")
         print(f"  BCE: {bce_point:.4f} (95% CI: [{bce_ci['lower']:.4f}, {bce_ci['upper']:.4f}])")
@@ -648,7 +648,7 @@ def evaluate_downstream(config_path='code/denoising/configs/denoising_config.yam
             })
 
             per_class_roc = roc_by_class(y_val, y_pred_denoised, mlb, n_bootstraps=n_bootstraps, densoising_model_name=denoise_name, classifyer_name=clf_name)
-            per_class_results.append(per_class_roc)
+            per_class_results.extend(per_class_roc)
 
             print(f"    AUC: {auc_point:.4f} (95% CI: [{ci['lower']:.4f}, {ci['upper']:.4f}])")
             print(f"    BCE: {bce_point:.4f} (95% CI: [{bce_ci['lower']:.4f}, {bce_ci['upper']:.4f}])")
@@ -677,7 +677,7 @@ def evaluate_downstream(config_path='code/denoising/configs/denoising_config.yam
     plot_downstream_results(results_df, results_folder)
 
     # Save per-class results
-    per_classdf = pd.concat([pd.DataFrame(t).T for t in per_class_results], ignore_index=True)
+    per_classdf = pd.DataFrame(per_class_results)
     per_class_path = os.path.join(results_folder, 'per_class_roc_results.csv')
     per_classdf.to_csv(per_class_path, index=False)
 

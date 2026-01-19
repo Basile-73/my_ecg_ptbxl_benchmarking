@@ -93,4 +93,8 @@ def roc_by_class(y_val:np.ndarray, y_pred:np.ndarray, mlb:MultiLabelBinarizer, n
         ci_df['classifier'] = classifyer_name
     if densoising_model_name is not None:
         ci_df['denoising_model'] = densoising_model_name
-    return ci_df.to_dict(orient='index')
+
+    # Convert to flat list of dicts with 'diagnosis' column
+    ci_df = ci_df.reset_index()
+    ci_df = ci_df.rename(columns={'index': 'diagnosis'})
+    return ci_df.to_dict(orient='records')
