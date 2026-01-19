@@ -6,7 +6,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 
-from maps import COLOR_MAP
+from maps import COLOR_MAP, NAME_MAP, plot_font_sizes
 
 def nested_get(d, path):
     for p in path.split("."):
@@ -32,10 +32,16 @@ def summarize_results(experiment_name: str, keys: list[str])-> pd.DataFrame:
         all_results= pd.concat([all_results, out])
     return all_results.sort_values(by=keys)
 
-def plot_results(all_results, keys, save_path=None, extra_df=None, filtered_models:list[str]=None):
-    fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+def plot_results(all_results, keys, save_path=None, extra_df=None, filtered_models:list[str]=None, filtered_metrics:list[str]=None):
+    metrics = filtered_metrics if filtered_metrics is not None else ['RMSE', 'SNR']
 
-    metrics = ['RMSE', 'SNR']
+    num_metrics = len(metrics)
+    fig, axes = plt.subplots(1, num_metrics, figsize=(7 * num_metrics, 5))
+
+    # Ensure axes is always iterable (handle single subplot case)
+    if num_metrics == 1:
+        axes = [axes]
+
     colors = plt.cm.tab10.colors
 
     for idx, metric in enumerate(metrics):
@@ -55,9 +61,10 @@ def plot_results(all_results, keys, save_path=None, extra_df=None, filtered_mode
             ci_high = model_data[(metric, 'ci_high')].values
 
             color = COLOR_MAP.get(model, colors[model_idx % len(colors)])
+            model_label = NAME_MAP.get(model, model)
 
             # Plot line with markers
-            ax.plot(durations, means, marker='o', label=model, color=color, linewidth=2, markersize=8)
+            ax.plot(durations, means, marker='o', label=model_label, color=color, linewidth=2, markersize=8)
 
             # Plot confidence interval
             ax.fill_between(durations, ci_low, ci_high, alpha=0.2, color=color)
@@ -71,14 +78,15 @@ def plot_results(all_results, keys, save_path=None, extra_df=None, filtered_mode
                     s=80,
                     color=color,
                     zorder=3,
-                    label=f"{model} w/o curriculum"
+                    label=f"{model_label} w/o curriculum"
                 )
 
-        ax.set_xlabel('Record Length (360Hz)', fontsize=12)
-        ax.set_ylabel(metric, fontsize=12)
-        ax.set_title(f'{metric} vs Record Length', fontsize=14, fontweight='bold')
-        ax.legend(fontsize=10)
+        ax.set_xlabel('Record Length (360Hz)', fontsize=plot_font_sizes['axis_labels'])
+        ax.set_ylabel(metric, fontsize=plot_font_sizes['axis_labels'])
+        ax.set_title(f'{metric} vs Record Length', fontsize=plot_font_sizes['title'], fontweight='bold')
+        ax.legend(fontsize=plot_font_sizes['legend'])
         ax.grid(True, alpha=0.3)
+        ax.tick_params(axis='both', which='major', labelsize=plot_font_sizes['ticks'])
 
         # Format x-axis to show integer durations
         ax.set_xscale('log')
@@ -108,8 +116,8 @@ def add_difference(df, models):
 
 all_results = summarize_results('../outputs/P0_curriculum_synthetic', ["model.type", "split_length"])
 differences = add_difference(all_results, ['unet_mamba_block', 'unet'])
-plot_results(all_results, keys = ["model.type", "split_length"], filtered_models=['unet', 'unet_mamba_block'])
-plot_results(differences, keys = ["model.type", "split_length"])
+plot_results(all_results, keys = ["model.type", "split_length"], filtered_models=['unet', 'unet_mamba_block'], filtered_metrics=['SNR'])
+plot_results(differences, keys = ["model.type", "split_length"], filtered_metrics=['SNR'])
 
 
 def plot_losses(train_loss_history, test_loss_history, model_name, save_folder):
