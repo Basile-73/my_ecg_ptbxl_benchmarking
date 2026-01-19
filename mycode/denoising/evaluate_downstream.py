@@ -22,6 +22,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.metrics import roc_auc_score
 from tqdm import tqdm
+import pickle
 
 # Add paths
 script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -32,7 +33,7 @@ sys.path.insert(0, os.path.join(script_dir, '../../ecg_noise/source'))
 
 from denoising_utils.preprocessing import normalize_signals, bandpass_filter, normalize_robust, denormalize_robust
 from ecg_noise_factory.noise import NoiseFactory
-from utils.utils import load_dataset, apply_standardizer
+from utils.utils import load_dataset, apply_standardizer, select_data, compute_label_aggregations
 
 sys.path.insert(0, os.path.join(script_dir, '../../'))
 from new_code.utils.getters import get_model
@@ -351,18 +352,7 @@ def evaluate_downstream(config_path='code/denoising/configs/denoising_config.yam
     val_fold = config['val_fold']
     test_fold = config['test_fold']
 
-    # Load PTB-XL data at classification sampling rate
-    data, raw_labels = load_dataset(datafolder, classification_sampling_rate)
-    print(f"Loaded: {data.shape[0]} samples at {classification_sampling_rate}Hz")
-
-    # Extract validation fold
-    X_val_12lead = data[raw_labels.strat_fold == val_fold]
-    X_val_12lead_original = X_val_12lead.copy()
-    X_train_12lead = data[~raw_labels.strat_fold.isin([val_fold, test_fold])]
-    print(f"Validation samples: {len(X_val_12lead)}")
-    print(f"Shape: {X_val_12lead[0].shape} (timesteps, channels)")
-
-    # Load classification labels and scaler from base experiment
+    # set the base path
     base_exp_path = os.path.join(
         os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
         config['classification_outputfolder'], base_exp
@@ -374,6 +364,33 @@ def evaluate_downstream(config_path='code/denoising/configs/denoising_config.yam
     if not os.path.exists(base_exp_path):
         raise FileNotFoundError(f"Base experiment not found: {base_exp_path}")
 
+
+    # Load PTB-XL data at classification sampling rate
+    data, raw_labels = load_dataset(datafolder, classification_sampling_rate)
+
+    experiments = {
+        'exp0': 'all',
+        'exp1': 'diagnostic',
+        'exp1.1': 'subdiagnostic',
+        'exp1.1.1': 'superdiagnostic',
+        'exp2': 'form',
+        'exp3': 'rhythm',
+    }
+
+    task = experiments[base_exp]
+    labels = compute_label_aggregations(raw_labels, datafolder, task)
+    pickle_folder = os.path.join(base_exp_path, 'data')
+    data, labels , _ , _ = select_data(data, labels, task, 0, pickle_folder)
+    print(f"Loaded: {data.shape[0]} samples at {classification_sampling_rate}Hz")
+
+    # Extract validation fold
+    X_val_12lead = data[labels.strat_fold == val_fold]
+    X_val_12lead_original = X_val_12lead.copy()
+    X_train_12lead = data[~labels.strat_fold.isin([val_fold, test_fold])]
+    print(f"Validation samples: {len(X_val_12lead)}")
+    print(f"Shape: {X_val_12lead[0].shape} (timesteps, channels)")
+
+    # Load classification labels and scaler from base experiment
     print(f"Base experiment folder: {base_exp_path}")
 
     y_val = np.load(os.path.join(base_exp_path, 'data', 'y_val.npy'), allow_pickle=True)
@@ -562,6 +579,7 @@ def evaluate_downstream(config_path='code/denoising/configs/denoising_config.yam
         y_pred_clean = clf_model.predict(X_val_clean_original_p)
 
         auc_point = roc_auc_score(y_val, y_pred_clean, average='macro')
+        # TODO add the function here
         ci = compute_bootstrap_ci(y_val, y_pred_clean, n_bootstraps=100)
 
         # Compute BCE (requires unnormalized logits from classifier)
@@ -1260,7 +1278,7 @@ Examples:
   python evaluate_downstream.py --base-exp exp1 --classification-fs 500 --classifiers all
         """
     )
-    parser.add_argument('--config', type=str, default='mycode/denoising/configs/new_run.yaml',
+    parser.add_argument('--config', type=str, default='mycode/denoising/configs/test.yaml',
                        help='Path to denoising config file')
     parser.add_argument('--base-exp', type=str, default='exp0',
                        help='Name of base classification experiment')
