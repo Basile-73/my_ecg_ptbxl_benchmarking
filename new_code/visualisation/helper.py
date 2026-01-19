@@ -32,7 +32,7 @@ def summarize_results(experiment_name: str, keys: list[str])-> pd.DataFrame:
         all_results= pd.concat([all_results, out])
     return all_results.sort_values(by=keys)
 
-def _plot_metric_on_axis(ax, all_results, keys, metric, filtered_models=None, extra_df=None, x_ticks=None):
+def _plot_metric_on_axis(ax, all_results, keys, metric, filtered_models=None, extra_df=None, x_ticks=None, show_xlabel=True, show_title=True, sampling_rate=360):
     """Helper function to plot a single metric on a given axis."""
     colors = plt.cm.tab10.colors
 
@@ -70,9 +70,13 @@ def _plot_metric_on_axis(ax, all_results, keys, metric, filtered_models=None, ex
                 label=f"{model_label} w/o curriculum"
             )
 
-    ax.set_xlabel('Record Length (360Hz)', fontsize=plot_font_sizes['axis_labels'])
+    if show_xlabel:
+        ax.set_xlabel(f'Record Length (s)', fontsize=plot_font_sizes['axis_labels'])
+    else:
+        ax.set_xlabel('')
     ax.set_ylabel(metric, fontsize=plot_font_sizes['axis_labels'])
-    ax.set_title(f'{metric} vs Record Length', fontsize=plot_font_sizes['title'], fontweight='bold')
+    if show_title:
+        ax.set_title(f'{metric} vs Record Length', fontsize=plot_font_sizes['title'], fontweight='bold')
     ax.legend(fontsize=plot_font_sizes['legend'])
     ax.grid(True, alpha=0.3)
     ax.tick_params(axis='both', which='major', labelsize=plot_font_sizes['ticks'])
@@ -82,9 +86,18 @@ def _plot_metric_on_axis(ax, all_results, keys, metric, filtered_models=None, ex
     ax.minorticks_off()
     if x_ticks is not None:
         ax.set_xticks(x_ticks)
+        # Convert to seconds for x-axis labels
+        if show_xlabel:
+            ax.set_xticklabels([f'{int(x/sampling_rate)}' for x in x_ticks])
+        else:
+            ax.set_xticklabels([])
     else:
-        ax.set_xticks(sorted(all_results[keys[1]].unique()))
-    ax.get_xaxis().set_major_formatter(plt.ScalarFormatter())
+        tick_values = sorted(all_results[keys[1]].unique())
+        ax.set_xticks(tick_values)
+        if show_xlabel:
+            ax.set_xticklabels([f'{int(x/sampling_rate)}' for x in tick_values])
+        else:
+            ax.set_xticklabels([])
 
 
 def plot_results(all_results, keys, save_path=None, extra_df=None, filtered_models:list[str]=None, filtered_metrics:list[str]=None):
@@ -110,7 +123,7 @@ def plot_results(all_results, keys, save_path=None, extra_df=None, filtered_mode
 
 
 def plot_results_and_differences(all_results, differences, keys, save_path=None, extra_df=None,
-                                   filtered_models:list[str]=None, filtered_metrics:list[str]=None):
+                                   filtered_models:list[str]=None, filtered_metrics:list[str]=None, sampling_rate=360, show_title=True):
     """
     Plot results and differences in a 2-row layout with aligned axes.
 
@@ -122,12 +135,14 @@ def plot_results_and_differences(all_results, differences, keys, save_path=None,
         extra_df: Optional extra data to plot
         filtered_models: Optional list of models to include
         filtered_metrics: Optional list of metrics to plot
+        sampling_rate: Sampling rate in Hz for converting to seconds (default: 360)
+        show_title: Whether to show titles on the top row plots (default: True)
     """
     metrics = filtered_metrics if filtered_metrics is not None else ['RMSE', 'SNR']
     num_metrics = len(metrics)
 
-    # Create 2 rows, metrics on top, differences on bottom
-    fig, axes = plt.subplots(2, num_metrics, figsize=(7 * num_metrics, 10))
+    # Create 2 rows, metrics on top, differences on bottom (reduced height)
+    fig, axes = plt.subplots(2, num_metrics, figsize=(7 * num_metrics, 6))
 
     # Ensure axes is always 2D
     if num_metrics == 1:
@@ -136,13 +151,61 @@ def plot_results_and_differences(all_results, differences, keys, save_path=None,
     # Get common x_ticks for alignment
     x_ticks = sorted(all_results[keys[1]].unique())
 
-    # Plot metrics on top row
-    for idx, metric in enumerate(metrics):
-        _plot_metric_on_axis(axes[0, idx], all_results, keys, metric, filtered_models, extra_df, x_ticks)
+    # Get unique models for filling between them
+    models = all_results[keys[0]].unique()
+    if filtered_models is not None:
+        models = [x for x in models if x in filtered_models]
 
-    # Plot differences on bottom row
+    # Plot metrics on top row (no x-axis labels/ticks)
     for idx, metric in enumerate(metrics):
-        _plot_metric_on_axis(axes[1, idx], differences, keys, metric, None, None, x_ticks)
+        _plot_metric_on_axis(axes[0, idx], all_results, keys, metric, filtered_models, extra_df, x_ticks, show_xlabel=False, show_title=show_title, sampling_rate=sampling_rate)
+
+        # Fill between the two model curves with transparent light green
+        if len(models) == 2:
+            model1_data = all_results[all_results[keys[0]] == models[0]].sort_values(keys[1])
+            model2_data = all_results[all_results[keys[0]] == models[1]].sort_values(keys[1])
+            durations = model1_data[keys[1]].values
+            means1 = model1_data[(metric, 'mean')].values
+            means2 = model2_data[(metric, 'mean')].values
+            axes[0, idx].fill_between(durations, means1, means2, alpha=0.2, color='lightgreen', zorder=1)
+
+    # Plot differences on bottom row (with x-axis in seconds)
+    for idx, metric in enumerate(metrics):
+        ax = axes[1, idx]
+        colors = plt.cm.tab10.colors
+
+        # Get difference data
+        diff_models = differences[keys[0]].unique()
+        for model_idx, model in enumerate(diff_models):
+            model_data = differences[differences[keys[0]] == model].sort_values(keys[1])
+
+            durations = model_data[keys[1]].values
+            means = model_data[(metric, 'mean')].values
+            ci_low = model_data[(metric, 'ci_low')].values
+            ci_high = model_data[(metric, 'ci_high')].values
+
+            model_label = NAME_MAP.get(model, model)
+
+            # Plot line with markers in black
+            # Use metric name with "Difference" as legend label
+            legend_label = f'{metric} Improvement'
+            ax.plot(durations, means, marker='o', label=legend_label, color='grey', linewidth=2, markersize=8)
+
+            # Fill below the curve with transparent light green
+            ax.fill_between(durations, 0, means, alpha=0.2, color='lightgreen', zorder=1)
+
+        ax.set_xlabel(f'Record Length (s)', fontsize=plot_font_sizes['axis_labels'])
+        ax.set_ylabel(metric, fontsize=plot_font_sizes['axis_labels'])
+        # No title for difference plots
+        ax.legend(fontsize=plot_font_sizes['legend'])
+        ax.grid(True, alpha=0.3)
+        ax.tick_params(axis='both', which='major', labelsize=plot_font_sizes['ticks'])
+
+        # Format x-axis
+        ax.set_xscale('log')
+        ax.minorticks_off()
+        ax.set_xticks(x_ticks)
+        ax.set_xticklabels([f'{int(x/sampling_rate)}' for x in x_ticks])
 
     plt.tight_layout()
 
@@ -166,8 +229,19 @@ def add_difference(df, models):
 
 all_results = summarize_results('../outputs/P0_curriculum_synthetic', ["model.type", "split_length"])
 differences = add_difference(all_results, ['unet_mamba_block', 'unet'])
-plot_results(all_results, keys = ["model.type", "split_length"], filtered_models=['unet', 'unet_mamba_block'], filtered_metrics=['SNR'])
-plot_results(differences, keys = ["model.type", "split_length"], filtered_metrics=['SNR'])
+all_results['model.type'] = all_results['model.type'].str.replace('unet_mamba_block', 'mamba1_3blocks', regex=False)
+# plot_results(all_results, keys = ["model.type", "split_length"], filtered_models=['unet', 'mamba1_3blocks'], filtered_metrics=['SNR'])
+# plot_results(differences, keys = ["model.type", "split_length"], filtered_metrics=['SNR'])
+
+plot_results_and_differences(
+    all_results,
+    differences,
+    keys=["model.type", "split_length"],
+    filtered_models=['unet', 'mamba1_3blocks'],
+    filtered_metrics=['SNR'],
+    save_path='../outputs/AAA_plots/length.png',
+    show_title=False
+)
 
 
 def plot_losses(train_loss_history, test_loss_history, model_name, save_folder):
