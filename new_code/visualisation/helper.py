@@ -6,46 +6,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 
-# COLOR_MAP = {
-#     'unet': '#ff9896',
-#     'unet_mamba': '#cc7675',
-#     'unet_mamba - unet': '#cc7675',
-#     'unet_mamba_bidir': '#995555',
-#     'unet_mamba_bidir - unet': '#995555',
-#     'imunet': '#98df8a',
-#     'imunet_mamba': '#6cbf5c',
-#     'imunet_mamba_bidir': '#3d7f3d',
-# }
-
-COLOR_MAP = {
-    'noisy_input': '#808080',  # Grey (baseline)
-    'ant_drnn': '#ffbb78',
-    'chiang_dae': '#ff7f0e',
-    'fcn': '#aec7e8',         # Light blue (Stage1)
-    'drnet_fcn': '#1f77b4',   # Dark blue (Stage2)
-    'unet': '#ff9896',
-    # 'unet_mamba': '#cc7675',
-    # 'unet_mamba - unet': '#cc7675',
-    # 'unet_mamba_bidir': '#995555',
-    # 'unet_mamba_bidir - unet': '#995555',
-    'drnet_unet': '#d62728',  # Dark red (Stage2)
-    'imunet': '#98df8a',
-    'imunet_mamba': '#6cbf5c',
-    'imunet_mamba_bidir': '#3d7f3d',
-    'drnet_imunet': '#2ca02c', # Dark green (Stage2)
-    'imunet_origin': '#9467bd',    # Purple
-    'mecge_phase': '#f6c453',      # warm golden yellow
-    'mecge_phase_250': '#e0a800',  # deeper amber
-    # 'imunet_mamba_bn': '#ff7f0e',  # Orange
-    # 'imunet_mamba_bottleneck': '#1C8AC9',  # Cyan-blue
-    # 'imunet_mamba_up': '#17becf',  # Cyan/Teal
-    # 'imunet_mamba_early': '#391CC9', # Purple-blue
-    # 'imunet_mamba_late': '#bcbd22',  # Yellow-green
-    'mamba1_3blocks': '#8ecae6',      # light blue
-    'drnet_mamba1_3blocks': '#005f73',# dark blue
-    'mamba2_3blocks': '#c77dff',        # light purple
-    'drnet_mamba2_3blocks': '#5a189a',  # dark purple
-}
+from maps import COLOR_MAP
 
 def nested_get(d, path):
     for p in path.split("."):
@@ -71,7 +32,7 @@ def summarize_results(experiment_name: str, keys: list[str])-> pd.DataFrame:
         all_results= pd.concat([all_results, out])
     return all_results.sort_values(by=keys)
 
-def plot_results(all_results, keys, save_path=None, extra_df=None):
+def plot_results(all_results, keys, save_path=None, extra_df=None, filtered_models:list[str]=None):
     fig, axes = plt.subplots(1, 2, figsize=(14, 5))
 
     metrics = ['RMSE', 'SNR']
@@ -82,6 +43,8 @@ def plot_results(all_results, keys, save_path=None, extra_df=None):
 
         # Get unique models
         models = all_results[keys[0]].unique()
+        if filtered_models is not None:
+            models = [x for x in models if x in filtered_models]
 
         for model_idx, model in enumerate(models):
             model_data = all_results[all_results[keys[0]] == model].sort_values(keys[1])
@@ -131,9 +94,22 @@ def plot_results(all_results, keys, save_path=None, extra_df=None):
 
     plt.show()
 
-# all_results = summarize_results('P0_curriculum_synthetic', ["model.type", "split_length"])
-# print(all_results)
-# plot_results(all_results, keys = ["model.type", "split_length"])
+def add_difference(df, models):
+    d1 = df[df['model.type']==models[0]].copy()
+    d2 = df[df['model.type']==models[1]]
+
+    num_cols = d1.select_dtypes('number').columns
+    num_cols = num_cols.drop(('split_length', ''))
+    d1[num_cols] = d1[num_cols] - d2[num_cols].values
+    d1['model.type'] = f'{models[0]} - {models[1]}'
+    mask = d1.columns.get_level_values(-1).str.contains('ci', case=False, na=False)
+    d1.loc[:, mask] = 0
+    return d1
+
+all_results = summarize_results('../outputs/P0_curriculum_synthetic', ["model.type", "split_length"])
+differences = add_difference(all_results, ['unet_mamba_block', 'unet'])
+plot_results(all_results, keys = ["model.type", "split_length"], filtered_models=['unet', 'unet_mamba_block'])
+plot_results(differences, keys = ["model.type", "split_length"])
 
 
 def plot_losses(train_loss_history, test_loss_history, model_name, save_folder):
