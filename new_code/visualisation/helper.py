@@ -32,6 +32,61 @@ def summarize_results(experiment_name: str, keys: list[str])-> pd.DataFrame:
         all_results= pd.concat([all_results, out])
     return all_results.sort_values(by=keys)
 
+def _plot_metric_on_axis(ax, all_results, keys, metric, filtered_models=None, extra_df=None, x_ticks=None):
+    """Helper function to plot a single metric on a given axis."""
+    colors = plt.cm.tab10.colors
+
+    # Get unique models
+    models = all_results[keys[0]].unique()
+    if filtered_models is not None:
+        models = [x for x in models if x in filtered_models]
+
+    for model_idx, model in enumerate(models):
+        model_data = all_results[all_results[keys[0]] == model].sort_values(keys[1])
+
+        durations = model_data[keys[1]].values
+        means = model_data[(metric, 'mean')].values
+        ci_low = model_data[(metric, 'ci_low')].values
+        ci_high = model_data[(metric, 'ci_high')].values
+
+        color = COLOR_MAP.get(model, colors[model_idx % len(colors)])
+        model_label = NAME_MAP.get(model, model)
+
+        # Plot line with markers
+        ax.plot(durations, means, marker='o', label=model_label, color=color, linewidth=2, markersize=8)
+
+        # Plot confidence interval
+        ax.fill_between(durations, ci_low, ci_high, alpha=0.2, color=color)
+
+        if extra_df is not None:
+            ed = extra_df[extra_df['model'] == model]
+            ax.scatter(
+                ed['record_length'],
+                ed[metric],
+                marker='x',
+                s=80,
+                color=color,
+                zorder=3,
+                label=f"{model_label} w/o curriculum"
+            )
+
+    ax.set_xlabel('Record Length (360Hz)', fontsize=plot_font_sizes['axis_labels'])
+    ax.set_ylabel(metric, fontsize=plot_font_sizes['axis_labels'])
+    ax.set_title(f'{metric} vs Record Length', fontsize=plot_font_sizes['title'], fontweight='bold')
+    ax.legend(fontsize=plot_font_sizes['legend'])
+    ax.grid(True, alpha=0.3)
+    ax.tick_params(axis='both', which='major', labelsize=plot_font_sizes['ticks'])
+
+    # Format x-axis to show integer durations
+    ax.set_xscale('log')
+    ax.minorticks_off()
+    if x_ticks is not None:
+        ax.set_xticks(x_ticks)
+    else:
+        ax.set_xticks(sorted(all_results[keys[1]].unique()))
+    ax.get_xaxis().set_major_formatter(plt.ScalarFormatter())
+
+
 def plot_results(all_results, keys, save_path=None, extra_df=None, filtered_models:list[str]=None, filtered_metrics:list[str]=None):
     metrics = filtered_metrics if filtered_metrics is not None else ['RMSE', 'SNR']
 
@@ -42,57 +97,52 @@ def plot_results(all_results, keys, save_path=None, extra_df=None, filtered_mode
     if num_metrics == 1:
         axes = [axes]
 
-    colors = plt.cm.tab10.colors
-
     for idx, metric in enumerate(metrics):
-        ax = axes[idx]
+        _plot_metric_on_axis(axes[idx], all_results, keys, metric, filtered_models, extra_df)
 
-        # Get unique models
-        models = all_results[keys[0]].unique()
-        if filtered_models is not None:
-            models = [x for x in models if x in filtered_models]
+    plt.tight_layout()
 
-        for model_idx, model in enumerate(models):
-            model_data = all_results[all_results[keys[0]] == model].sort_values(keys[1])
+    if save_path:
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        print(f"Plot saved to {save_path}")
 
-            durations = model_data[keys[1]].values
-            means = model_data[(metric, 'mean')].values
-            ci_low = model_data[(metric, 'ci_low')].values
-            ci_high = model_data[(metric, 'ci_high')].values
+    plt.show()
 
-            color = COLOR_MAP.get(model, colors[model_idx % len(colors)])
-            model_label = NAME_MAP.get(model, model)
 
-            # Plot line with markers
-            ax.plot(durations, means, marker='o', label=model_label, color=color, linewidth=2, markersize=8)
+def plot_results_and_differences(all_results, differences, keys, save_path=None, extra_df=None,
+                                   filtered_models:list[str]=None, filtered_metrics:list[str]=None):
+    """
+    Plot results and differences in a 2-row layout with aligned axes.
 
-            # Plot confidence interval
-            ax.fill_between(durations, ci_low, ci_high, alpha=0.2, color=color)
+    Args:
+        all_results: DataFrame with original results
+        differences: DataFrame with difference results
+        keys: List of keys for grouping
+        save_path: Optional path to save the figure
+        extra_df: Optional extra data to plot
+        filtered_models: Optional list of models to include
+        filtered_metrics: Optional list of metrics to plot
+    """
+    metrics = filtered_metrics if filtered_metrics is not None else ['RMSE', 'SNR']
+    num_metrics = len(metrics)
 
-            if extra_df is not None:
-                ed = extra_df[extra_df['model'] == model]
-                ax.scatter(
-                    ed['record_length'],
-                    ed[metric],
-                    marker='x',
-                    s=80,
-                    color=color,
-                    zorder=3,
-                    label=f"{model_label} w/o curriculum"
-                )
+    # Create 2 rows, metrics on top, differences on bottom
+    fig, axes = plt.subplots(2, num_metrics, figsize=(7 * num_metrics, 10))
 
-        ax.set_xlabel('Record Length (360Hz)', fontsize=plot_font_sizes['axis_labels'])
-        ax.set_ylabel(metric, fontsize=plot_font_sizes['axis_labels'])
-        ax.set_title(f'{metric} vs Record Length', fontsize=plot_font_sizes['title'], fontweight='bold')
-        ax.legend(fontsize=plot_font_sizes['legend'])
-        ax.grid(True, alpha=0.3)
-        ax.tick_params(axis='both', which='major', labelsize=plot_font_sizes['ticks'])
+    # Ensure axes is always 2D
+    if num_metrics == 1:
+        axes = axes.reshape(2, 1)
 
-        # Format x-axis to show integer durations
-        ax.set_xscale('log')
-        ax.minorticks_off()
-        ax.set_xticks(sorted(all_results[keys[1]].unique()))
-        ax.get_xaxis().set_major_formatter(plt.ScalarFormatter())
+    # Get common x_ticks for alignment
+    x_ticks = sorted(all_results[keys[1]].unique())
+
+    # Plot metrics on top row
+    for idx, metric in enumerate(metrics):
+        _plot_metric_on_axis(axes[0, idx], all_results, keys, metric, filtered_models, extra_df, x_ticks)
+
+    # Plot differences on bottom row
+    for idx, metric in enumerate(metrics):
+        _plot_metric_on_axis(axes[1, idx], differences, keys, metric, None, None, x_ticks)
 
     plt.tight_layout()
 
