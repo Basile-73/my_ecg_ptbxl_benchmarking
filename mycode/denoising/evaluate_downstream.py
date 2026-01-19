@@ -32,6 +32,7 @@ sys.path.insert(0, os.path.join(script_dir, '../../ecg_noise/source'))
 
 
 from denoising_utils.preprocessing import normalize_signals, bandpass_filter, normalize_robust, denormalize_robust
+from denoising_utils.downstream import roc_by_class, compute_bootstrap_ci
 from ecg_noise_factory.noise import NoiseFactory
 from utils.utils import load_dataset, apply_standardizer, select_data, compute_label_aggregations
 
@@ -239,67 +240,6 @@ def denoise_12lead_signal(noisy_12lead, denoising_model, device,
     return denoised
 
 
-def compute_bootstrap_ci(y_true, y_pred, n_bootstraps=100, confidence_level=0.95, metric='auc'):
-    """
-    Compute bootstrap confidence intervals for AUC or BCE.
-
-    Args:
-        y_true: True labels (binary multi-label format)
-        y_pred: Model predictions. Must be:
-                - Probabilities (0-1) for metric='auc'
-                - Unnormalized logits for metric='bce' (BCEWithLogitsLoss expects raw model outputs)
-        n_bootstraps: Number of bootstrap samples
-        confidence_level: Confidence level (e.g., 0.95 for 95% CI)
-        metric: 'auc' or 'bce' to specify which metric to compute
-
-    Returns:
-        Dictionary with mean, lower, and upper bounds
-    """
-    scores = []
-    n_samples = len(y_true)
-
-    np.random.seed(42)
-
-    for _ in range(n_bootstraps):
-        # Sample with replacement
-        indices = np.random.choice(n_samples, n_samples, replace=True)
-
-        y_true_boot = y_true[indices]
-        y_pred_boot = y_pred[indices]
-
-        # For AUC: check if we have at least one positive sample per class
-        # For BCE: no filtering needed, all samples are valid
-        if metric == 'auc' and y_true_boot.sum(axis=0).min() == 0:
-            continue
-
-        try:
-            if metric == 'auc':
-                score = roc_auc_score(y_true_boot, y_pred_boot, average='macro')
-            elif metric == 'bce':
-                # BCE expects unnormalized logits (raw model outputs before sigmoid)
-                bce_loss = nn.BCEWithLogitsLoss()
-                y_true_tensor = torch.FloatTensor(y_true_boot)
-                y_pred_tensor = torch.FloatTensor(y_pred_boot)
-                score = bce_loss(y_pred_tensor, y_true_tensor).item()
-            else:
-                raise ValueError(f"Unknown metric: {metric}")
-            scores.append(score)
-        except:
-            continue
-
-    if len(scores) == 0:
-        return {'mean': 0.0, 'lower': 0.0, 'upper': 0.0}
-
-    scores = np.array(scores)
-    alpha = 1 - confidence_level
-
-    return {
-        'mean': np.mean(scores),
-        'lower': np.percentile(scores, 100 * alpha / 2),
-        'upper': np.percentile(scores, 100 * (1 - alpha / 2))
-    }
-
-
 def evaluate_downstream(config_path='code/denoising/configs/denoising_config.yaml', base_exp='exp0',
                        classification_sampling_rate=500, classifier_names=None):
     """
@@ -322,6 +262,7 @@ def evaluate_downstream(config_path='code/denoising/configs/denoising_config.yam
     config = load_config(config_path)
     denoising_exp_folder = os.path.join(config['outputfolder'], config['experiment_name'])
     denoising_sampling_rate = config['sampling_frequency']
+    n_bootstraps = config['evaluation']['bootstrap_samples']
 
     # Create results folder
     results_folder = os.path.join(denoising_exp_folder, 'downstream_results')
@@ -566,7 +507,12 @@ def evaluate_downstream(config_path='code/denoising/configs/denoising_config.yam
     print("EVALUATING ALL COMBINATIONS")
     print("="*80)
 
+    print("Loading Mutli Label Binarizer")
+    with open(os.path.join(pickle_folder, 'mlb.pkl'), 'rb') as f:
+        mlb = pickle.load(f)
+
     results = []
+    per_class_results = []
 
     # Baseline: Clean data
     print("\n--- Baseline: Clean Data ---")
@@ -579,14 +525,13 @@ def evaluate_downstream(config_path='code/denoising/configs/denoising_config.yam
         y_pred_clean = clf_model.predict(X_val_clean_original_p)
 
         auc_point = roc_auc_score(y_val, y_pred_clean, average='macro')
-        # TODO add the function here
-        ci = compute_bootstrap_ci(y_val, y_pred_clean, n_bootstraps=100)
+        ci = compute_bootstrap_ci(y_val, y_pred_clean, n_bootstraps=n_bootstraps)
 
         # Compute BCE (requires unnormalized logits from classifier)
         # Note: y_pred_clean contains raw model outputs (logits), not probabilities
         bce_loss = nn.BCEWithLogitsLoss()
         bce_point = bce_loss(torch.FloatTensor(y_pred_clean), torch.FloatTensor(y_val)).item()
-        bce_ci = compute_bootstrap_ci(y_val, y_pred_clean, n_bootstraps=100, metric='bce')
+        bce_ci = compute_bootstrap_ci(y_val, y_pred_clean, n_bootstraps=n_bootstraps, metric='bce')
 
         results.append({
             'denoising_model': 'clean',
@@ -600,6 +545,9 @@ def evaluate_downstream(config_path='code/denoising/configs/denoising_config.yam
             'bce_lower': bce_ci['lower'],
             'bce_upper': bce_ci['upper']
         })
+
+        per_class_roc = roc_by_class(y_val, y_pred_clean, mlb, n_bootstraps=n_bootstraps, densoising_model_name='clean', classifyer_name=clf_name)
+        per_class_results.append(per_class_roc)
 
         print(f"  AUC: {auc_point:.4f} (95% CI: [{ci['lower']:.4f}, {ci['upper']:.4f}])")
         print(f"  BCE: {bce_point:.4f} (95% CI: [{bce_ci['lower']:.4f}, {bce_ci['upper']:.4f}])")
@@ -617,13 +565,13 @@ def evaluate_downstream(config_path='code/denoising/configs/denoising_config.yam
         y_pred_noisy = clf_model.predict(X_val_noisy_denorm)
 
         auc_point = roc_auc_score(y_val, y_pred_noisy, average='macro')
-        ci = compute_bootstrap_ci(y_val, y_pred_noisy, n_bootstraps=100)
+        ci = compute_bootstrap_ci(y_val, y_pred_noisy, n_bootstraps=n_bootstraps)
 
         # Compute BCE (requires unnormalized logits from classifier)
         # Note: y_pred_noisy contains raw model outputs (logits), not probabilities
         bce_loss = nn.BCEWithLogitsLoss()
         bce_point = bce_loss(torch.FloatTensor(y_pred_noisy), torch.FloatTensor(y_val)).item()
-        bce_ci = compute_bootstrap_ci(y_val, y_pred_noisy, n_bootstraps=100, metric='bce')
+        bce_ci = compute_bootstrap_ci(y_val, y_pred_noisy, n_bootstraps=n_bootstraps, metric='bce')
 
         results.append({
             'denoising_model': 'noisy',
@@ -637,6 +585,9 @@ def evaluate_downstream(config_path='code/denoising/configs/denoising_config.yam
             'bce_lower': bce_ci['lower'],
             'bce_upper': bce_ci['upper']
         })
+
+        per_class_roc = roc_by_class(y_val, y_pred_clean, mlb, n_bootstraps=n_bootstraps, densoising_model_name='noisy', classifyer_name=clf_name)
+        per_class_results.append(per_class_roc)
 
         print(f"  AUC: {auc_point:.4f} (95% CI: [{ci['lower']:.4f}, {ci['upper']:.4f}])")
         print(f"  BCE: {bce_point:.4f} (95% CI: [{bce_ci['lower']:.4f}, {bce_ci['upper']:.4f}])")
@@ -675,13 +626,13 @@ def evaluate_downstream(config_path='code/denoising/configs/denoising_config.yam
             y_pred_denoised = clf_model.predict(X_val_denoised)
 
             auc_point = roc_auc_score(y_val, y_pred_denoised, average='macro')
-            ci = compute_bootstrap_ci(y_val, y_pred_denoised, n_bootstraps=100)
+            ci = compute_bootstrap_ci(y_val, y_pred_denoised, n_bootstraps=n_bootstraps)
 
             # Compute BCE (requires unnormalized logits from classifier)
             # Note: y_pred_denoised contains raw model outputs (logits), not probabilities
             bce_loss = nn.BCEWithLogitsLoss()
             bce_point = bce_loss(torch.FloatTensor(y_pred_denoised), torch.FloatTensor(y_val)).item()
-            bce_ci = compute_bootstrap_ci(y_val, y_pred_denoised, n_bootstraps=100, metric='bce')
+            bce_ci = compute_bootstrap_ci(y_val, y_pred_denoised, n_bootstraps=n_bootstraps, metric='bce')
 
             results.append({
                 'denoising_model': denoise_name,
@@ -695,6 +646,9 @@ def evaluate_downstream(config_path='code/denoising/configs/denoising_config.yam
                 'bce_lower': bce_ci['lower'],
                 'bce_upper': bce_ci['upper']
             })
+
+            per_class_roc = roc_by_class(y_val, y_pred_denoised, mlb, n_bootstraps=n_bootstraps, densoising_model_name=denoise_name, classifyer_name=clf_name)
+            per_class_results.append(per_class_roc)
 
             print(f"    AUC: {auc_point:.4f} (95% CI: [{ci['lower']:.4f}, {ci['upper']:.4f}])")
             print(f"    BCE: {bce_point:.4f} (95% CI: [{bce_ci['lower']:.4f}, {bce_ci['upper']:.4f}])")
@@ -721,6 +675,12 @@ def evaluate_downstream(config_path='code/denoising/configs/denoising_config.yam
 
     # Create visualizations
     plot_downstream_results(results_df, results_folder)
+
+    # Save per-class results
+    per_classdf = pd.concat([pd.DataFrame(t).T for t in per_class_results], ignore_index=True)
+    per_class_path = os.path.join(results_folder, 'per_class_roc_results.csv')
+    per_classdf.to_csv(per_class_path, index=False)
+
 
     print("\n✓ Downstream evaluation complete!")
     print(f"   Results saved to: {results_folder}")
