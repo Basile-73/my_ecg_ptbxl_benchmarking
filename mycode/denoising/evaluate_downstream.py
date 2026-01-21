@@ -586,7 +586,7 @@ def evaluate_downstream(config_path='code/denoising/configs/denoising_config.yam
             'bce_upper': bce_ci['upper']
         })
 
-        per_class_roc = roc_by_class(y_val, y_pred_clean, mlb, n_bootstraps=n_bootstraps, densoising_model_name='noisy', classifyer_name=clf_name)
+        per_class_roc = roc_by_class(y_val, y_pred_noisy, mlb, n_bootstraps=n_bootstraps, densoising_model_name='noisy', classifyer_name=clf_name)
         per_class_results.extend(per_class_roc)
 
         print(f"  AUC: {auc_point:.4f} (95% CI: [{ci['lower']:.4f}, {ci['upper']:.4f}])")
