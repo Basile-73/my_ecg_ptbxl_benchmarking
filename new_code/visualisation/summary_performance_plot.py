@@ -5,8 +5,8 @@ import numpy as np
 
 from maps import COLOR_MAP, NAME_MAP, plot_font_sizes
 
-choice = 'sinus'
-legend = True
+choice = 'european'
+legend = False
 save_figure = True
 save_table = False
 
@@ -88,7 +88,10 @@ for ax, metric in zip(axes, ["RMSE", "SNR"]):
 
     ymin = (means - ylow).min() * 0.95
     ymax = (means + yhigh).max() + text_pad * 17
-    ax.set_ylim(ymin, ymax)
+    if (metric == "RMSE") and (choice == 'european'):
+        ax.set_ylim(ymin, 0.8)
+    else:
+        ax.set_ylim(ymin, ymax)
 
     # Add dotted horizontal line for best performing model
     best_value = means.min() if metric == "RMSE" else means.max()
