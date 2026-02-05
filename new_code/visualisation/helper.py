@@ -227,7 +227,7 @@ def add_difference(df, models):
     d1.loc[:, mask] = 0
     return d1
 
-all_results = summarize_results('../outputs/P0_curriculum_synthetic', ["model.type", "split_length"])
+all_results = summarize_results('../outputs/P0_curriculum_synthetic_extra', ["model.type", "split_length"])
 differences = add_difference(all_results, ['unet_mamba_block', 'unet'])
 all_results['model.type'] = all_results['model.type'].str.replace('unet_mamba_block', 'mamba1_3blocks', regex=False)
 # plot_results(all_results, keys = ["model.type", "split_length"], filtered_models=['unet', 'mamba1_3blocks'], filtered_metrics=['SNR'])
@@ -239,7 +239,7 @@ plot_results_and_differences(
     keys=["model.type", "split_length"],
     filtered_models=['unet', 'mamba1_3blocks'],
     filtered_metrics=['SNR'],
-    save_path='../outputs/AAA_plots/length.png',
+    save_path='../outputs/AAA_plots/length_extra.png',
     show_title=False
 )
 

@@ -22,7 +22,15 @@ from mycode.denoising.denoising_utils.downstream import roc_by_class
 from mycode.denoising.evaluate_downstream import compute_bootstrap_ci
 
 # Option 1
-test = roc_by_class(y_val, y_pred, mlb, classifyer_name='clean')
+test = roc_by_class(y_val, y_pred, mlb, classifyer_name='clean', densoising_model_name='fastai_inception1d')
+
+test1 = test
+test2 = test
+
+test_list = test1 + test2
+# concat in one pandas dataframe
+import pandas as pd
+df = pd.DataFrame(test_list)
 
 # Option 2
 # alternative to reuse more code

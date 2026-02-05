@@ -717,6 +717,10 @@ def plot_metric_bars(results_df, output_folder, metric='auc'):
     """
     # Comprehensive color map for consistent styling across all plots
     color_map = COLOR_MAP
+    font_scale = 1.2
+    scaled_font_sizes = {
+        key: plot_font_sizes[key] * font_scale for key in plot_font_sizes
+    }
 
     sns.set_style("whitegrid")
 
@@ -806,61 +810,90 @@ def plot_metric_bars(results_df, output_folder, metric='auc'):
         if lower_is_better:
             # BCE: shade region above noisy (worse performance)
             if noisy_value is not None:
-                x_max_limit = metric_values.max() + 1
-                ax.fill_betweenx([y_min, y_max], noisy_value, x_max_limit,
+                x_max_limit = (metric_values.max() + 1) * 100
+                ax.fill_betweenx([y_min, y_max], noisy_value * 100, x_max_limit,
                                 color='lightgrey', alpha=0.2, hatch='///',
                                 edgecolor='grey', linewidth=0.5, zorder=0)
             # BCE: shade region below clean (better than clean)
             if clean_value is not None:
-                ax.fill_betweenx([y_min, y_max], 0, clean_value,
+                ax.fill_betweenx([y_min, y_max], 0, clean_value * 100,
                                 color='lightgrey', alpha=0.2, hatch='///',
                                 edgecolor='grey', linewidth=0.5, zorder=0)
         else:
             # AUC: shade region below noisy (worse performance)
             if noisy_value is not None:
-                ax.fill_betweenx([y_min, y_max], 0, noisy_value,
+                ax.fill_betweenx([y_min, y_max], 0, noisy_value * 100,
                                 color='lightgrey', alpha=0.2, hatch='///',
                                 edgecolor='grey', linewidth=0.5, zorder=0)
             # AUC: shade region above clean (better than clean)
             if clean_value is not None:
-                ax.fill_betweenx([y_min, y_max], clean_value, 1.0,
+                ax.fill_betweenx([y_min, y_max], clean_value * 100, 100.0,
                                 color='lightgrey', alpha=0.2, hatch='///',
                                 edgecolor='grey', linewidth=0.5, zorder=0)
 
-        bars = ax.barh(y_pos, metric_values, xerr=[yerr_lower, yerr_upper],
+        # Scale values by 100 for plotting
+        metric_values_scaled = metric_values * 100
+        yerr_lower_scaled = yerr_lower * 100
+        yerr_upper_scaled = yerr_upper * 100
+
+        bars = ax.barh(y_pos, metric_values_scaled, xerr=[yerr_lower_scaled, yerr_upper_scaled],
                       color=colors, alpha=0.8, edgecolor='black',
                       linewidth=1, capsize=4)
 
-        ax.set_yticks(y_pos)
-        ax.set_yticklabels(display_names, fontsize=plot_font_sizes['ticks'])
+        # Remove y-axis and create legend instead
+        ax.set_yticks([])
+        ax.set_yticklabels([])
         ax.set_ylim([y_min, y_max])
-        ax.set_xlabel(metric_label, fontsize=plot_font_sizes['axis_labels'], fontweight='bold')
+
+        # Update x-axis label and tick font size
+        if metric == 'auc':
+            ax.set_xlabel(r'AUROC $\times$ 10$^2$', fontsize=scaled_font_sizes['axis_labels'], fontweight='bold')
+        else:
+            ax.set_xlabel(metric_label, fontsize=scaled_font_sizes['axis_labels'], fontweight='bold')
+        ax.tick_params(axis='x', labelsize=scaled_font_sizes['value_labels'])
+
         clf_display_name = CLASSIFICATION_MODEL_NAMES.get(clf_name, clf_name)
         # ax.set_title(f'Downstream ECG Classification Performance - {clf_display_name}',
         #             fontsize=plot_font_sizes['title'], fontweight='bold', pad=15)
         ax.grid(True, alpha=0.3, axis='x')
 
+# Create legend handles for the models (using patches for colored boxes)
+        from matplotlib.patches import Patch
+        legend_handles = []
+        for model, display_name, color in zip(denoise_models, display_names, colors):
+            legend_handles.append(Patch(facecolor=color, edgecolor='black', label=display_name))
+
+        # Reverse the order for the legend
+        legend_handles = legend_handles[::-1]
+
+        # Add legend below the plot with same font size as y-axis ticks was
+        ax.legend(handles=legend_handles, loc='upper center', bbox_to_anchor=(0.5, -0.15),
+             ncol=3, fontsize=scaled_font_sizes['ticks'], frameon=True, fancybox=True, shadow=True)
+
         # Add value labels at appropriate position based on metric direction
         for i, (value, lower, upper) in enumerate(zip(metric_values, metric_lowers, metric_uppers)):
             # For BCE, put label to the right of upper bound; for AUC, to the right of upper bound
+            # Multiply value by 100 and format with 2 decimal places
+            display_value = value * 100
+            upper_scaled = upper * 100
             if lower_is_better:
-                ax.text(upper + 0.001, i, f'{value:.4f}',
-                       ha='left', va='center', fontsize=plot_font_sizes['value_labels'], fontweight='bold',
+                  ax.text(upper_scaled + 0.1, i, f'{display_value:.2f}',
+                      ha='left', va='center', fontsize=scaled_font_sizes['value_labels'], fontweight='bold',
                        bbox=dict(boxstyle='round,pad=0.3', facecolor='white',
                                 edgecolor='none', alpha=0.7))
             else:
-                ax.text(upper + 0.001, i, f'{value:.4f}',
-                       ha='left', va='center', fontsize=plot_font_sizes['value_labels'], fontweight='bold',
+                  ax.text(upper_scaled + 0.1, i, f'{display_value:.2f}',
+                      ha='left', va='center', fontsize=scaled_font_sizes['value_labels'], fontweight='bold',
                        bbox=dict(boxstyle='round,pad=0.3', facecolor='white',
                                 edgecolor='none', alpha=0.7))
 
         # Set x-axis limits dynamically based on best and worst performing models
         if lower_is_better:
-            x_min = max(0, metric_values.min() - 0.005)
-            x_max = metric_values.max() + 0.007
+            x_min = max(0, metric_values.min() * 100 - 0.5)
+            x_max = metric_values.max() * 100 + 0.7
         else:
-            x_min = max(0.5, metric_values.min() - 0.015)
-            x_max = min(1.0, metric_values.max() + 0.02)
+            x_min = max(50, metric_values.min() * 100 - 1.5)
+            x_max = min(100.0, metric_values.max() * 100 + 2)
         ax.set_xlim([x_min, x_max])
 
         # Add vertical dotted line at the best performing model (excluding clean)
@@ -871,8 +904,8 @@ def plot_metric_bars(results_df, output_folder, metric='auc'):
                 if model != 'clean' and metric_values[i] < best_value:
                     best_value = metric_values[i]
             if best_value != float('inf'):
-                ax.axvline(x=best_value, color='darkgrey', linestyle=':', linewidth=2,
-                          alpha=0.7, zorder=1, label=f'Best: {best_value:.4f}')
+                ax.axvline(x=best_value * 100, color='darkgrey', linestyle=':', linewidth=2,
+                          alpha=0.7, zorder=1, label=f'Best: {best_value * 100:.2f}')
         else:
             # For AUC, best is maximum
             best_value = 0
@@ -880,8 +913,8 @@ def plot_metric_bars(results_df, output_folder, metric='auc'):
                 if model != 'clean' and metric_values[i] > best_value:
                     best_value = metric_values[i]
             if best_value > 0:
-                ax.axvline(x=best_value, color='darkgrey', linestyle=':', linewidth=2,
-                          alpha=0.7, zorder=1, label=f'Best: {best_value:.4f}')
+                ax.axvline(x=best_value * 100, color='darkgrey', linestyle=':', linewidth=2,
+                          alpha=0.7, zorder=1, label=f'Best: {best_value * 100:.2f}')
 
         plt.tight_layout()
 
@@ -1203,9 +1236,9 @@ def create_improvement_heatmap(results_df, output_folder, metric='auc'):
 
         print(f"✓ {metric_label} heatmap saved to: {plot_path}")
 
-# results_df = pd.read_csv('/local/home/bamorel/my_ecg_ptbxl_benchmarking/mycode/denoising/output/test/downstream_results/downstream_classification_results.csv')
-# output_folder = '/local/home/bamorel/my_ecg_ptbxl_benchmarking/mycode/denoising/output/test/downstream_results/'
-# plot_downstream_results(results_df, output_folder)
+results_df = pd.read_csv('/local/home/bamorel/my_ecg_ptbxl_benchmarking/mycode/denoising/output/all_100_nbp/downstream_results/downstream_classification_results.csv')
+output_folder = '/local/home/bamorel/my_ecg_ptbxl_benchmarking/mycode/denoising/output/Final_AUC_Plot/downstream_results/'
+plot_downstream_results(results_df, output_folder)
 
 
 def main():
