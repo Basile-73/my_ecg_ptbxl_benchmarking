@@ -503,13 +503,14 @@ class PTBXLLengthDataset(LengthExperimentDataset):
                 raise ValueError(
                     f"Record {record_base} has only {sig.shape[1]} leads, cannot select index {self.lead_index}"
                 )
-            primary = sig[:, self.lead_index]
-            resampled = self._resample(primary)
-            n_segments = len(resampled) // self.split_length
-            for i in range(n_segments):
-                start = i * self.split_length
-                end = start + self.split_length
-                segments.append(resampled[start:end])
+            for lead in range(sig.shape[1]): # sig.shape[1] is number of leads, we want to iterate through all leads and treat them as separate samples
+                primary = sig[:, lead]
+                resampled = self._resample(primary)
+                n_segments = len(resampled) // self.split_length
+                for i in range(n_segments):
+                    start = i * self.split_length
+                    end = start + self.split_length
+                    segments.append(resampled[start:end])
 
         if not segments:
             raise ValueError("PTB-XL dataset contains no segments after processing")
