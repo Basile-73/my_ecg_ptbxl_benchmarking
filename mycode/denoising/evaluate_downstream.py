@@ -241,7 +241,7 @@ def denoise_12lead_signal(noisy_12lead, denoising_model, device,
 
 
 def evaluate_downstream(config_path='code/denoising/configs/denoising_config.yaml', base_exp='exp0',
-                       classification_sampling_rate=500, classifier_names=None):
+                       classification_sampling_rate=500, classifier_names=None, compute_per_class=False):
     """
     Main evaluation function.
 
@@ -546,8 +546,9 @@ def evaluate_downstream(config_path='code/denoising/configs/denoising_config.yam
             'bce_upper': bce_ci['upper']
         })
 
-        per_class_roc = roc_by_class(y_val, y_pred_clean, mlb, n_bootstraps=n_bootstraps, densoising_model_name='clean', classifyer_name=clf_name)
-        per_class_results.extend(per_class_roc)
+        if compute_per_class:
+            per_class_roc = roc_by_class(y_val, y_pred_clean, mlb, n_bootstraps=n_bootstraps, densoising_model_name='clean', classifyer_name=clf_name)
+            per_class_results.extend(per_class_roc)
 
         print(f"  AUC: {auc_point:.4f} (95% CI: [{ci['lower']:.4f}, {ci['upper']:.4f}])")
         print(f"  BCE: {bce_point:.4f} (95% CI: [{bce_ci['lower']:.4f}, {bce_ci['upper']:.4f}])")
@@ -585,9 +586,9 @@ def evaluate_downstream(config_path='code/denoising/configs/denoising_config.yam
             'bce_lower': bce_ci['lower'],
             'bce_upper': bce_ci['upper']
         })
-
-        per_class_roc = roc_by_class(y_val, y_pred_noisy, mlb, n_bootstraps=n_bootstraps, densoising_model_name='noisy', classifyer_name=clf_name)
-        per_class_results.extend(per_class_roc)
+        if compute_per_class:
+            per_class_roc = roc_by_class(y_val, y_pred_noisy, mlb, n_bootstraps=n_bootstraps, densoising_model_name='noisy', classifyer_name=clf_name)
+            per_class_results.extend(per_class_roc)
 
         print(f"  AUC: {auc_point:.4f} (95% CI: [{ci['lower']:.4f}, {ci['upper']:.4f}])")
         print(f"  BCE: {bce_point:.4f} (95% CI: [{bce_ci['lower']:.4f}, {bce_ci['upper']:.4f}])")
@@ -647,8 +648,9 @@ def evaluate_downstream(config_path='code/denoising/configs/denoising_config.yam
                 'bce_upper': bce_ci['upper']
             })
 
-            per_class_roc = roc_by_class(y_val, y_pred_denoised, mlb, n_bootstraps=n_bootstraps, densoising_model_name=denoise_name, classifyer_name=clf_name)
-            per_class_results.extend(per_class_roc)
+            if compute_per_class:
+                per_class_roc = roc_by_class(y_val, y_pred_denoised, mlb, n_bootstraps=n_bootstraps, densoising_model_name=denoise_name, classifyer_name=clf_name)
+                per_class_results.extend(per_class_roc)
 
             print(f"    AUC: {auc_point:.4f} (95% CI: [{ci['lower']:.4f}, {ci['upper']:.4f}])")
             print(f"    BCE: {bce_point:.4f} (95% CI: [{bce_ci['lower']:.4f}, {bce_ci['upper']:.4f}])")
@@ -677,9 +679,10 @@ def evaluate_downstream(config_path='code/denoising/configs/denoising_config.yam
     plot_downstream_results(results_df, results_folder)
 
     # Save per-class results
-    per_classdf = pd.DataFrame(per_class_results)
-    per_class_path = os.path.join(results_folder, 'per_class_roc_results.csv')
-    per_classdf.to_csv(per_class_path, index=False)
+    if compute_per_class:
+        per_classdf = pd.DataFrame(per_class_results)
+        per_class_path = os.path.join(results_folder, f'per_class_roc_results_{base_exp}.csv')
+        per_classdf.to_csv(per_class_path, index=False)
 
 
     print("\n✓ Downstream evaluation complete!")
@@ -1236,9 +1239,9 @@ def create_improvement_heatmap(results_df, output_folder, metric='auc'):
 
         print(f"✓ {metric_label} heatmap saved to: {plot_path}")
 
-results_df = pd.read_csv('/local/home/bamorel/my_ecg_ptbxl_benchmarking/mycode/denoising/output/all_100_nbp/downstream_results/downstream_classification_results.csv')
-output_folder = '/local/home/bamorel/my_ecg_ptbxl_benchmarking/mycode/denoising/output/Final_AUC_Plot/downstream_results/'
-plot_downstream_results(results_df, output_folder)
+# results_df = pd.read_csv('/local/home/bamorel/my_ecg_ptbxl_benchmarking/mycode/denoising/output/all_100_nbp/downstream_results/downstream_classification_results.csv')
+# output_folder = '/local/home/bamorel/my_ecg_ptbxl_benchmarking/mycode/denoising/output/Final_AUC_Plot/downstream_results/'
+# plot_downstream_results(results_df, output_folder)
 
 
 def main():
@@ -1282,6 +1285,8 @@ Examples:
                        help='Classification models to evaluate. Use "all" for all 6 models, '
                             'or specify space-separated model names. '
                             f'Available: {", ".join(ALL_CLASSIFIERS)}')
+    parser.add_argument('-per_class', action='store_true',
+                       help='Whether to compute per-class ROC curves (increases runtime)')
     args = parser.parse_args()
 
     # Handle 'all' keyword
@@ -1295,7 +1300,8 @@ Examples:
         config_path=args.config,
         base_exp=args.base_exp,
         classification_sampling_rate=args.classification_fs,
-        classifier_names=classifier_names
+        classifier_names=classifier_names,
+        compute_per_class=args.per_class
     )
 
 
