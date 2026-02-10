@@ -90,7 +90,8 @@ class SimpleTrainer:
     def __init__(self, config_path: Path, seed=42,
                  experiment_name=None,
                  pre_trained_weights_path=None,
-                 load_weights=True):
+                 load_weights=True,
+                 random_subset=False):
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         model_config, model_type, model_name, simulation_params, split_length, data_volume, noise_paths, training_config = (
@@ -116,6 +117,7 @@ class SimpleTrainer:
             noise_paths["config_path"],
             mode="train",
             seed=42,
+            random_subset=random_subset
         )
         self.test_noise_factory = NoiseFactory(
             noise_paths["data_path"],
@@ -123,6 +125,7 @@ class SimpleTrainer:
             noise_paths["config_path"],
             mode="test",
             seed=42,
+            random_subset=random_subset
         )
 
         self.train_dataset = get_data_set(config_path=config_path, mode='train', noise_factory=self.train_noise_factory)
@@ -337,9 +340,9 @@ class SimpleTrainer:
 
 class MambaTrainer(SimpleTrainer):
     def __init__(self, config_path, seed=42, experiment_name=None,
-                 pre_trained_weights_path=None):
+                 pre_trained_weights_path=None, random_subset=False):
 
-        super().__init__(config_path, seed, experiment_name, pre_trained_weights_path, load_weights=False)
+        super().__init__(config_path, seed, experiment_name, pre_trained_weights_path, load_weights=False, random_subset=random_subset)
 
         if pre_trained_weights_path:
             missing, unexpected = self.model.load_state_dict(
@@ -359,8 +362,8 @@ class MambaTrainer(SimpleTrainer):
 
 class Stage2Trainer(SimpleTrainer):
     def __init__(self, config_path, stage1_type, stage1_weights_path, seed=42, experiment_name=None,
-                 pre_trained_weights_path=None):
-        super().__init__(config_path, seed, experiment_name, pre_trained_weights_path, load_weights=False)
+                 pre_trained_weights_path=None, random_subset=False):
+        super().__init__(config_path, seed, experiment_name, pre_trained_weights_path, load_weights=False, random_subset=random_subset)
 
         self.stage1_model = get_model(stage1_type, sequence_length=self.sequence_length, model_config=self.model_config)
         print(f"Loading stage 1 weights from {stage1_weights_path}")

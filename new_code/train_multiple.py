@@ -81,12 +81,14 @@ def main(experiment_name):
         config_path = save_config(config, now_str, model_name)
         pre_trained_weights_path = config["model"].get("pre_trained_weights_path", None)
         seed = config['model'].get('seed', 42)
+        random_subset = config['noise_paths'].get('random_subset', False)
         try:
             trainer = SimpleTrainer(
                 config_path=config_path,
                 experiment_name=experiment_name,
                 pre_trained_weights_path=pre_trained_weights_path,
-                seed=seed
+                seed=seed,
+                random_subset=random_subset
             )
             trainer.train()
         except Exception as e:
@@ -101,12 +103,14 @@ def main(experiment_name):
 
         pre_trained_weights_path = config["model"].get("pre_trained_weights_path", None)
         seed = config['model'].get('seed', 42)
+        random_subset = config['noise_paths'].get('random_subset', False)
         try:
             trainer = MambaTrainer(
                 config_path=config_path,
                 experiment_name=experiment_name,
                 pre_trained_weights_path=pre_trained_weights_path,
-                seed=seed
+                seed=seed,
+                random_subset=random_subset
             )
             trainer.train()
         except Exception as e:
@@ -118,6 +122,7 @@ def main(experiment_name):
         model_name = get_model_weights_name(config, experiment_name)
         print(f'Training model: {model_name}')
         config_path = save_config(config, now_str, model_name)
+        random_subset = config['noise_paths'].get('random_subset', False)
 
         stage_1_type = config['model']['stage_1_type']
         stage_1_weights_path = config['model']['stage_1_weights_path']
@@ -128,7 +133,8 @@ def main(experiment_name):
                 stage1_type=stage_1_type,
                 stage1_weights_path=stage_1_weights_path,
                 experiment_name=experiment_name,
-                seed=seed
+                seed=seed,
+                random_subset=random_subset
             )
             trainer.train()
         except Exception as e:
