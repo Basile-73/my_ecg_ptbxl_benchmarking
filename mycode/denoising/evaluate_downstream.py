@@ -735,7 +735,7 @@ def plot_metric_bars(results_df, output_folder, metric='auc'):
 
     # Create one figure per classifier
     for clf_name in classifiers:
-        fig, ax = plt.subplots(figsize=(10, len(results_df['denoising_model'].unique()) * 0.5))
+        fig, ax = plt.subplots(figsize=(15, (len(results_df['denoising_model'])/len(results_df['classification_model'].unique())) * 1))
 
         # Filter data for this classifier
         clf_data = results_df[results_df['classification_model'] == clf_name].copy()
@@ -1239,8 +1239,8 @@ def create_improvement_heatmap(results_df, output_folder, metric='auc'):
 
         print(f"✓ {metric_label} heatmap saved to: {plot_path}")
 
-# results_df = pd.read_csv('/local/home/bamorel/my_ecg_ptbxl_benchmarking/mycode/denoising/output/all_100_nbp/downstream_results/downstream_classification_results.csv')
-# output_folder = '/local/home/bamorel/my_ecg_ptbxl_benchmarking/mycode/denoising/output/Final_AUC_Plot/downstream_results/'
+# results_df = pd.read_csv('/local/home/bamorel/my_ecg_ptbxl_benchmarking/mycode/denoising/output/mamba_all_leads/downstream_results/exp0/downstream_classification_results.csv')
+# output_folder = '/local/home/bamorel/my_ecg_ptbxl_benchmarking/mycode/denoising/output/mamba_all_leads/downstream_results/exp0'
 # plot_downstream_results(results_df, output_folder)
 
 
