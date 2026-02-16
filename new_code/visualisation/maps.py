@@ -39,6 +39,33 @@ COLOR_MAP = {
     'drnet_mamba1_3blocks_lead_1': '#005f73',# dark blue
     'mamba2_3blocks_lead_1': '#c77dff',        # light purple
     'drnet_mamba2_3blocks_lead_1': '#5a189a',  # dark purple
+
+    'drnet_mamba1_3blocks_l0': '#005f73',
+    'drnet_mamba1_3blocks_l1': '#005f73',
+    'drnet_mamba1_3blocks_l2': '#005f73',
+    'drnet_mamba1_3blocks_l3': '#005f73',
+    'drnet_mamba1_3blocks_l4': '#005f73',
+    'drnet_mamba1_3blocks_l5': '#005f73',
+    'drnet_mamba1_3blocks_l6': '#005f73',
+    'drnet_mamba1_3blocks_l7': '#005f73',
+    'drnet_mamba1_3blocks_l8': '#005f73',
+    'drnet_mamba1_3blocks_l9': '#005f73',
+    'drnet_mamba1_3blocks_l10': '#005f73',
+    'drnet_mamba1_3blocks_l11': '#005f73',
+    'drnet_mamba1_3blocks_all': '#005f73',
+    'mamba1_3blocks_ptb_l0': '#8ecae6',
+    'mamba1_3blocks_ptb_l1': '#8ecae6',
+    'mamba1_3blocks_ptb_l2': '#8ecae6',
+    'mamba1_3blocks_ptb_l3': '#8ecae6',
+    'mamba1_3blocks_ptb_l4': '#8ecae6',
+    'mamba1_3blocks_ptb_l5': '#8ecae6',
+    'mamba1_3blocks_ptb_l6': '#8ecae6',
+    'mamba1_3blocks_ptb_l7': '#8ecae6',
+    'mamba1_3blocks_ptb_l8': '#8ecae6',
+    'mamba1_3blocks_ptb_l9': '#8ecae6',
+    'mamba1_3blocks_ptb_l10': '#8ecae6',
+    'mamba1_3blocks_ptb_l11': '#8ecae6',
+    'mamba1_3blocks_ptb_all': '#8ecae6',
 }
 
 NAME_MAP = {
@@ -80,8 +107,8 @@ OUR_MODELS = [
 ]
 
 EXCLUDE_MODELS = [
-    'mamba2_3blocks',
-    'drnet_mamba2_3blocks',
+    #'mamba2_3blocks',
+    #'drnet_mamba2_3blocks',
 ]
 
 CLASSIFICATION_MODEL_NAMES = {
