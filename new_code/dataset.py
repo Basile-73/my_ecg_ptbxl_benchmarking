@@ -499,12 +499,21 @@ class PTBXLLengthDataset(LengthExperimentDataset):
         for _, row in df.iterrows():
             record_base = os.path.join(self.data_path, row[filename_col])
             sig, _ = wfdb.rdsamp(record_base)
-            if sig.shape[1] <= self.lead_index:
+            if self.lead_index is not None and sig.shape[1] <= self.lead_index:
                 raise ValueError(
                     f"Record {record_base} has only {sig.shape[1]} leads, cannot select index {self.lead_index}"
                 )
-            for lead in range(sig.shape[1]): # sig.shape[1] is number of leads, we want to iterate through all leads and treat them as separate samples
-                primary = sig[:, lead]
+            if self.lead_index is None:
+                for lead in range(sig.shape[1]): # sig.shape[1] is number of leads, we want to iterate through all leads and treat them as separate samples
+                    primary = sig[:, lead]
+                    resampled = self._resample(primary)
+                    n_segments = len(resampled) // self.split_length
+                    for i in range(n_segments):
+                        start = i * self.split_length
+                        end = start + self.split_length
+                        segments.append(resampled[start:end])
+            else:
+                primary = sig[:, self.lead_index]
                 resampled = self._resample(primary)
                 n_segments = len(resampled) // self.split_length
                 for i in range(n_segments):
