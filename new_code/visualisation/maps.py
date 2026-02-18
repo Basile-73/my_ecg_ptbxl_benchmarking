@@ -25,6 +25,8 @@ COLOR_MAP = {
     # 'imunet_mamba_late': '#bcbd22',  # Yellow-green
     'mamba1_3blocks': '#8ecae6',      # light blue
     'drnet_mamba1_3blocks': '#005f73',# dark blue
+    'mamba1_3blocks_ls': '#c77dff',      # light blue
+    'drnet_mamba1_3blocks_ls': '#5a189a',# dark blue
     'mamba2_3blocks': '#c77dff',        # light purple
     'drnet_mamba2_3blocks': '#5a189a',  # dark purple
 
@@ -97,6 +99,8 @@ NAME_MAP = {
     'drnet_mamba1_3blocks_lead_1': 'DRNET Mamba1-3B (Lead 1)',
     'mamba2_3blocks_lead_1': 'UNet Mamba2-3B (Lead 1)',
     'drnet_mamba2_3blocks_lead_1': 'DRNET Mamba2-3B (Lead 1)',
+    'mamba1_3blocks_ls': 'UNet Mamba1-3B (Lead aware)',      # light blue
+    'drnet_mamba1_3blocks_ls': 'DRNET Mamba1-3B (Lead aware)',
 }
 
 OUR_MODELS = [
@@ -107,8 +111,8 @@ OUR_MODELS = [
 ]
 
 EXCLUDE_MODELS = [
-    #'mamba2_3blocks',
-    #'drnet_mamba2_3blocks',
+    'mamba2_3blocks',
+    'drnet_mamba2_3blocks',
 ]
 
 CLASSIFICATION_MODEL_NAMES = {
