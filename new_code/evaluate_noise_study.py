@@ -1,7 +1,8 @@
 
 # 1. load the test config
 import yaml
-test_config = yaml.safe_load(open('experiments/noise_study/study.yaml'))
+config_name = 'ptb_xl'
+test_config = yaml.safe_load(open(f'experiments/noise_study/{config_name}.yaml'))
 
 # 2. create noise configs and save them in noise/configs/temp
 import numpy as np
@@ -13,14 +14,14 @@ for noise_type in ['em', 'bw', 'ma', 'AWGN']:
      all_noise_levels[noise_type] = noise_levels
      print(noise_levels)
 
-     noise_config = {'SNR': {'em': 0, 'ma': 0, 'bw': 0, 'AWGN': 0}}
+     noise_config = {'SNR': {'em': None, 'ma': None, 'bw': None, 'AWGN': None}}
 
      for i in range(resolution):
           noise_config['SNR'][noise_type] = float(noise_levels[i])
           yaml.dump(noise_config, open(f'noise/configs/temp/{noise_type}/{i}.yaml', 'w'))
 
 for i in range(resolution):
-    noise_config = {'SNR': {'em': 0, 'ma': 0, 'bw': 0, 'AWGN': 0}}
+    noise_config = {'SNR': {'em': None, 'ma': None, 'bw': None, 'AWGN': None}}
     for noise_type in ['em', 'bw', 'ma', 'AWGN']:
         noise_config['SNR'][noise_type] = float(all_noise_levels[noise_type][i])
     yaml.dump(noise_config, open(f'noise/configs/temp/combined/{i}.yaml', 'w'))
@@ -89,7 +90,7 @@ for experiment in test_config['experiments']:
 # 7. Create logic to store the results
 import pandas as pd
 df = pd.concat(final_res, ignore_index=True)
-df.to_csv('outputs/noise_study_results.csv', index=False)
+df.to_csv(f'outputs/noise_study_results_{config_name}.csv', index=False)
 
 # 8. Delete all temporary files (but keep the folders)
 import shutil

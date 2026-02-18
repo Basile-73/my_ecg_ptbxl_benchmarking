@@ -152,26 +152,43 @@ def denoise_12lead_signal(noisy_12lead, denoising_model, device,
 
     Args:
         noisy_12lead: Array of shape (n_samples, n_timesteps, 12)
-        denoising_model: Trained denoising model (Stage1 or Stage2)
+        denoising_model: Trained denoising model (Stage1 or Stage2) or list of 12 models
         device: torch device
         batch_size: Batch size for processing
-        stage1_model: Stage1 model (required for Stage2 models)
+        stage1_model: Stage1 model (required for Stage2 models) or list of 12 models
 
     Returns:
         Denoised signal of same shape
     """
     n_samples, n_timesteps, n_leads = noisy_12lead.shape
 
-    denoising_model.eval()
+    # Handle eval() for both single models and lists
+    if isinstance(denoising_model, list):
+        for m in denoising_model:
+            m.eval()
+    else:
+        denoising_model.eval()
+
     is_stage2 = stage1_model is not None
 
-    # Detect if main denoising model is MECGE
-    is_mecge = hasattr(denoising_model, 'denoising') # refactore MECGE implementation does not have denoising method.
+    # Detect if main denoising model is MECGE (check first element if list)
+    if isinstance(denoising_model, list):
+        is_mecge = hasattr(denoising_model[0], 'denoising') if len(denoising_model) > 0 else False
+    else:
+        is_mecge = hasattr(denoising_model, 'denoising') # refactore MECGE implementation does not have denoising method.
 
     if is_stage2:
-        stage1_model.eval()
+        # Handle eval() for stage1_model
+        if isinstance(stage1_model, list):
+            for m in stage1_model:
+                m.eval()
+        else:
+            stage1_model.eval()
         # Detect if Stage1 model is MECGE
-        is_stage1_mecge = hasattr(stage1_model, 'denoising')
+        if isinstance(stage1_model, list):
+            is_stage1_mecge = hasattr(stage1_model[0], 'denoising') if len(stage1_model) > 0 else False
+        else:
+            is_stage1_mecge = hasattr(stage1_model, 'denoising')
 
         # Guard: Stage2 MECGE is an unusual configuration
         if is_mecge:
@@ -194,6 +211,14 @@ def denoise_12lead_signal(noisy_12lead, denoising_model, device,
 
     # Process each lead
     for lead_idx in range(n_leads):
+        # Select model for current lead
+        if isinstance(denoising_model, list):
+            current_model = denoising_model[lead_idx]
+            current_stage1 = stage1_model[lead_idx] if isinstance(stage1_model, list) else None
+        else:
+            current_model = denoising_model
+            current_stage1 = stage1_model
+
         lead_data = noisy_12lead[:, :, lead_idx:lead_idx+1]  # (n_samples, n_timesteps, 1)
 
         # Process in batches
@@ -210,26 +235,26 @@ def denoise_12lead_signal(noisy_12lead, denoising_model, device,
                     # Branch early to skip unnecessary Stage1 computation
                     if is_mecge:
                         # Use original noisy signal for MECGE, bypassing Stage1 entirely
-                        denoised_batch = denoising_model.denoising(batch_tensor)  # (batch, 1, 1, time) # TODO: Update MECGE with feeding
+                        denoised_batch = current_model.denoising(batch_tensor)  # (batch, 1, 1, time) # TODO: Update MECGE with feeding
                     else:
                         # Standard Stage2 model: need to concatenate noisy signal with Stage1 output
                         # 1. Get Stage1 output using appropriate inference method
                         if is_stage1_mecge:
-                            stage1_output = stage1_model.denoising(batch_tensor)  # (batch, 1, 1, time) # TODO: Update MECGE with feeding
+                            stage1_output = current_stage1.denoising(batch_tensor)  # (batch, 1, 1, time) # TODO: Update MECGE with feeding
                         else:
-                            stage1_output = stage1_model(batch_tensor)  # (batch, 1, 1, time)
+                            stage1_output = current_stage1(batch_tensor)  # (batch, 1, 1, time)
 
                         # 2. Concatenate along channel dimension: (batch, 2, 1, time)
                         stage2_input = torch.cat([batch_tensor, stage1_output], dim=1)
 
                         # 3. Pass through Stage2
-                        denoised_batch = denoising_model(stage2_input)  # (batch, 1, 1, time)
+                        denoised_batch = current_model(stage2_input)  # (batch, 1, 1, time)
                 else:
                     # For Stage1: direct pass using appropriate inference method
                     if is_mecge:
-                        denoised_batch = denoising_model.denoising(batch_tensor)  # (batch, 1, 1, time) # TODO: Update MECGE with feeding
+                        denoised_batch = current_model.denoising(batch_tensor)  # (batch, 1, 1, time) # TODO: Update MECGE with feeding
                     else:
-                        denoised_batch = denoising_model(batch_tensor)  # (batch, 1, 1, time)
+                        denoised_batch = current_model(batch_tensor)  # (batch, 1, 1, time)
 
                 denoised_batch = denoised_batch.squeeze(1).permute(0, 2, 1).cpu().numpy()
 
@@ -238,6 +263,42 @@ def denoise_12lead_signal(noisy_12lead, denoising_model, device,
     denoised = resample_signal(denoised, denoising_sf, classification_sf)
 
     return denoised
+
+
+def validate_lead_specific_configs(model_configs):
+    """
+    Validate that lead-specific configurations have correct path patterns.
+
+    Args:
+        model_configs: List of model configuration dictionaries
+
+    Raises:
+        ValueError: If lead_specific is true but paths don't contain {lead} placeholder
+    """
+    for model_config in model_configs:
+        model_name = model_config['name']
+        is_lead_specific = model_config.get('lead_specific', False)
+
+        if is_lead_specific:
+            # Check model_path contains {lead}
+            model_path = model_config.get('model_path', '')
+            if '{lead}' not in model_path:
+                raise ValueError(
+                    f"Error: Configuration validation failed for model '{model_name}'\n"
+                    f"lead_specific is true but model_path doesn't contain {{lead}} placeholder\n"
+                    f"Expected format: /path/to/model_l{{lead}}.pth"
+                )
+
+            # If stage2, check stage_1_weights_path contains {lead}
+            is_stage2 = model_config.get('is_stage_2', False)
+            if is_stage2:
+                stage1_path = model_config.get('stage_1_weights_path', '')
+                if '{lead}' not in stage1_path:
+                    raise ValueError(
+                        f"Error: Configuration validation failed for model '{model_name}'\n"
+                        f"lead_specific is true but stage_1_weights_path doesn't contain {{lead}} placeholder\n"
+                        f"Expected format: /path/to/model_l{{lead}}.pth"
+                    )
 
 
 def evaluate_downstream(config_path='code/denoising/configs/denoising_config.yaml', base_exp='exp0',
@@ -398,77 +459,161 @@ def evaluate_downstream(config_path='code/denoising/configs/denoising_config.yam
     denoising_models = {}
     stage1_models_cache = {}  # Cache loaded Stage1 models for Stage2 use
     model_configs = config['models']
+    validate_lead_specific_configs(model_configs)
 
     for model_config in model_configs:
         model_name = model_config['name']
         model_type = model_config['type']
+        is_lead_specific = model_config.get('lead_specific', False)
 
         # Check if model exists
         model_path = model_config['model_path']
 
-        if not os.path.exists(model_path):
-            print(f"⚠️  Model {model_name} not found, skipping...")
-            continue
+        if is_lead_specific:
+            # Lead-specific: load 12 models
+            models = []
+            is_stage2 = model_config['is_stage_2']
+            input_length = denoising_sampling_rate * 10
 
-        # Load model
-        is_stage2 = model_config['is_stage_2']
-        input_length = denoising_sampling_rate * 10
+            all_files_exist = True
+            for lead_idx in range(12):
+                current_path = model_path.replace('{lead}', str(lead_idx))
+                if not os.path.exists(current_path):
+                    print(f"⚠️  Model {model_name} lead {lead_idx} not found at {current_path}, skipping all leads...")
+                    all_files_exist = False
+                    break
 
-        model = get_model(
-            model_type,
-            sequence_length=input_length,  # Use denoising input length
-            model_config = model_config,
-            is_stage2=is_stage2
-        )
+            if not all_files_exist:
+                continue
 
-        model.load_state_dict(torch.load(model_path, map_location=device, weights_only=True))
-        model.to(device)
-        model.eval()
+            for lead_idx in range(12):
+                current_path = model_path.replace('{lead}', str(lead_idx))
 
-        # For Stage2 models, also load the corresponding Stage1 model
-        stage1_model = None
-        if is_stage2: # TODO update this section
-            stage1_name = model_config.get('stage_1_type', None)
-            if stage1_name:
-                # Check if we already loaded this Stage1 model
-                if stage1_name in stage1_models_cache:
-                    stage1_model = stage1_models_cache[stage1_name]
-                    print(f"  Using cached Stage1 model: {stage1_name}")
-                else:
-                    # Load the Stage1 model
-                    stage1_model_path = model_config['stage_1_weights_path']
-                    if os.path.exists(stage1_model_path):
-                        # Determine Stage1 model type from its name or config
-                        # IMPORTANT: Check for 'imunet' BEFORE 'unet' since 'imunet' contains 'unet'
-                        stage1_type = model_config['stage_1_type']
-                        input_length = denoising_sampling_rate * 10
+                model = get_model(
+                    model_type,
+                    sequence_length=input_length,
+                    model_config=model_config,
+                    is_stage2=is_stage2
+                )
 
-                        stage1_model = get_model( # TODO: Update get_model
-                            stage1_type,
-                            sequence_length=input_length,
-                            model_config=model_config, # access mamba_params for stage 1 model
-                            is_stage2=False
-                        )
-                        stage1_model.load_state_dict(torch.load(stage1_model_path, map_location=device, weights_only=True))
-                        stage1_model.to(device)
-                        stage1_model.eval()
+                model.load_state_dict(torch.load(current_path, map_location=device, weights_only=True))
+                model.to(device)
+                model.eval()
+                models.append(model)
+                print(f"  - Lead {lead_idx}: {current_path}")
 
-                        # Cache it
-                        stage1_models_cache[stage1_name] = stage1_model
-                        print(f"  Loaded Stage1 model: {stage1_name} (type: {stage1_type})")
+            # Handle Stage1 models for lead-specific Stage2
+            stage1_model = None
+            if is_stage2:
+                stage1_type = model_config['stage_1_type']
+                stage1_base_path = model_config['stage_1_weights_path']
+
+                # First, check that all 12 Stage1 files exist
+                all_stage1_files_exist = True
+                for lead_idx in range(12):
+                    stage1_path = stage1_base_path.replace('{lead}', str(lead_idx))
+                    if not os.path.exists(stage1_path):
+                        print(f"  ⚠️  Stage1 model lead {lead_idx} not found at {stage1_path}, skipping entire model...")
+                        all_stage1_files_exist = False
+                        break
+
+                if not all_stage1_files_exist:
+                    continue
+
+                # Load all 12 Stage1 models
+                stage1_models = []
+                for lead_idx in range(12):
+                    stage1_path = stage1_base_path.replace('{lead}', str(lead_idx))
+
+                    stage1 = get_model(
+                        stage1_type,
+                        sequence_length=input_length,
+                        model_config=model_config,
+                        is_stage2=False
+                    )
+                    stage1.load_state_dict(torch.load(stage1_path, map_location=device, weights_only=True))
+                    stage1.to(device)
+                    stage1.eval()
+                    stage1_models.append(stage1)
+                    print(f"  - Stage1 Lead {lead_idx}: {stage1_path}")
+
+                stage1_model = stage1_models
+
+            denoising_models[model_name] = {
+                'model': models,
+                'type': model_type,
+                'is_stage2': is_stage2,
+                'stage1_model': stage1_model,
+                'lead_specific': True
+            }
+
+            print(f"✓ Loaded: {model_name}")
+        else:
+            # Single model (existing logic)
+            if not os.path.exists(model_path):
+                print(f"⚠️  Model {model_name} not found, skipping...")
+                continue
+
+            # Load model
+            is_stage2 = model_config['is_stage_2']
+            input_length = denoising_sampling_rate * 10
+
+            model = get_model(
+                model_type,
+                sequence_length=input_length,  # Use denoising input length
+                model_config = model_config,
+                is_stage2=is_stage2
+            )
+
+            model.load_state_dict(torch.load(model_path, map_location=device, weights_only=True))
+            model.to(device)
+            model.eval()
+
+            # For Stage2 models, also load the corresponding Stage1 model
+            stage1_model = None
+            if is_stage2: # TODO update this section
+                stage1_name = model_config.get('stage_1_type', None)
+                if stage1_name:
+                    # Check if we already loaded this Stage1 model
+                    if stage1_name in stage1_models_cache:
+                        stage1_model = stage1_models_cache[stage1_name]
+                        print(f"  Using cached Stage1 model: {stage1_name}")
                     else:
-                        print(f"  ⚠️  Warning: Stage1 model {stage1_name} not found for {model_name}")
-            else:
-                print(f"  ⚠️  Warning: No stage1_model specified for {model_name}")
+                        # Load the Stage1 model
+                        stage1_model_path = model_config['stage_1_weights_path']
+                        if os.path.exists(stage1_model_path):
+                            # Determine Stage1 model type from its name or config
+                            # IMPORTANT: Check for 'imunet' BEFORE 'unet' since 'imunet' contains 'unet'
+                            stage1_type = model_config['stage_1_type']
+                            input_length = denoising_sampling_rate * 10
 
-        denoising_models[model_name] = {
-            'model': model,
-            'type': model_type,
-            'is_stage2': is_stage2,
-            'stage1_model': stage1_model
-        }
+                            stage1_model = get_model( # TODO: Update get_model
+                                stage1_type,
+                                sequence_length=input_length,
+                                model_config=model_config, # access mamba_params for stage 1 model
+                                is_stage2=False
+                            )
+                            stage1_model.load_state_dict(torch.load(stage1_model_path, map_location=device, weights_only=True))
+                            stage1_model.to(device)
+                            stage1_model.eval()
 
-        print(f"✓ Loaded: {model_name}")
+                            # Cache it
+                            stage1_models_cache[stage1_name] = stage1_model
+                            print(f"  Loaded Stage1 model: {stage1_name} (type: {stage1_type})")
+                        else:
+                            print(f"  ⚠️  Warning: Stage1 model {stage1_name} not found for {model_name}")
+                else:
+                    print(f"  ⚠️  Warning: No stage1_model specified for {model_name}")
+
+            denoising_models[model_name] = {
+                'model': model,
+                'type': model_type,
+                'is_stage2': is_stage2,
+                'stage1_model': stage1_model,
+                'lead_specific': False
+            }
+
+            print(f"✓ Loaded: {model_name}")
 
     print(f"\nTotal denoising models loaded: {len(denoising_models)}")
 
@@ -735,7 +880,7 @@ def plot_metric_bars(results_df, output_folder, metric='auc'):
 
     # Create one figure per classifier
     for clf_name in classifiers:
-        fig, ax = plt.subplots(figsize=(10, len(results_df['denoising_model'].unique()) * 0.5))
+        fig, ax = plt.subplots(figsize=(15, (len(results_df['denoising_model'])/len(results_df['classification_model'].unique())) * 1))
 
         # Filter data for this classifier
         clf_data = results_df[results_df['classification_model'] == clf_name].copy()
@@ -1239,8 +1384,8 @@ def create_improvement_heatmap(results_df, output_folder, metric='auc'):
 
         print(f"✓ {metric_label} heatmap saved to: {plot_path}")
 
-# results_df = pd.read_csv('/local/home/bamorel/my_ecg_ptbxl_benchmarking/mycode/denoising/output/all_100_nbp/downstream_results/downstream_classification_results.csv')
-# output_folder = '/local/home/bamorel/my_ecg_ptbxl_benchmarking/mycode/denoising/output/Final_AUC_Plot/downstream_results/'
+# results_df = pd.read_csv('/local/home/bamorel/my_ecg_ptbxl_benchmarking/mycode/denoising/output/mamba_all_leads/downstream_results/exp0/downstream_classification_results.csv')
+# output_folder = '/local/home/bamorel/my_ecg_ptbxl_benchmarking/mycode/denoising/output/mamba_all_leads/downstream_results/exp0'
 # plot_downstream_results(results_df, output_folder)
 
 

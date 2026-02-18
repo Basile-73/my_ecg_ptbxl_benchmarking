@@ -25,8 +25,49 @@ COLOR_MAP = {
     # 'imunet_mamba_late': '#bcbd22',  # Yellow-green
     'mamba1_3blocks': '#8ecae6',      # light blue
     'drnet_mamba1_3blocks': '#005f73',# dark blue
+    'mamba1_3blocks_ls': '#c77dff',      # light blue
+    'drnet_mamba1_3blocks_ls': '#5a189a',# dark blue
     'mamba2_3blocks': '#c77dff',        # light purple
     'drnet_mamba2_3blocks': '#5a189a',  # dark purple
+
+    'mecge_lead_1': '#f6c453',
+
+    'unet_lead_1': '#ff9896',
+    'drnet_unet_lead_1': '#d62728',  # Dark red (Stage2)
+    'imunet_lead_1': '#98df8a',
+    'drnet_imunet_lead_1': '#2ca02c', # Dark green (Stage2)
+
+    'mamba1_3blocks_lead_1': '#8ecae6',      # light blue
+    'drnet_mamba1_3blocks_lead_1': '#005f73',# dark blue
+    'mamba2_3blocks_lead_1': '#c77dff',        # light purple
+    'drnet_mamba2_3blocks_lead_1': '#5a189a',  # dark purple
+
+    'drnet_mamba1_3blocks_l0': '#005f73',
+    'drnet_mamba1_3blocks_l1': '#005f73',
+    'drnet_mamba1_3blocks_l2': '#005f73',
+    'drnet_mamba1_3blocks_l3': '#005f73',
+    'drnet_mamba1_3blocks_l4': '#005f73',
+    'drnet_mamba1_3blocks_l5': '#005f73',
+    'drnet_mamba1_3blocks_l6': '#005f73',
+    'drnet_mamba1_3blocks_l7': '#005f73',
+    'drnet_mamba1_3blocks_l8': '#005f73',
+    'drnet_mamba1_3blocks_l9': '#005f73',
+    'drnet_mamba1_3blocks_l10': '#005f73',
+    'drnet_mamba1_3blocks_l11': '#005f73',
+    'drnet_mamba1_3blocks_all': '#005f73',
+    'mamba1_3blocks_ptb_l0': '#8ecae6',
+    'mamba1_3blocks_ptb_l1': '#8ecae6',
+    'mamba1_3blocks_ptb_l2': '#8ecae6',
+    'mamba1_3blocks_ptb_l3': '#8ecae6',
+    'mamba1_3blocks_ptb_l4': '#8ecae6',
+    'mamba1_3blocks_ptb_l5': '#8ecae6',
+    'mamba1_3blocks_ptb_l6': '#8ecae6',
+    'mamba1_3blocks_ptb_l7': '#8ecae6',
+    'mamba1_3blocks_ptb_l8': '#8ecae6',
+    'mamba1_3blocks_ptb_l9': '#8ecae6',
+    'mamba1_3blocks_ptb_l10': '#8ecae6',
+    'mamba1_3blocks_ptb_l11': '#8ecae6',
+    'mamba1_3blocks_ptb_all': '#8ecae6',
 }
 
 NAME_MAP = {
@@ -35,17 +76,31 @@ NAME_MAP = {
     'chiang_dae': 'DAE',
     'fcn': 'FCN',
     'drnet_fcn': 'DRNET-FCN',
+
     'unet': 'UNet',
     'drnet_unet': 'DRNET-UNet',
     'imunet': 'IMUNet',
     'drnet_imunet': 'DRNET-IMUNet',
+    'unet_lead_1': 'UNet (Lead 1)',
+    'drnet_unet_lead_1': 'DRNET-UNet (Lead 1)',
+    'imunet_lead_1': 'IMUNet (Lead 1)',
+    'drnet_imunet_lead_1': 'DRNET-IMUNet (Lead 1)',
+
     'mecge_phase': 'MECGE-Phase',
     'mecge_phase_250': 'MECGE-Phase-250',
     'mecge': 'MECGE',
+    'mecge_lead_1': 'MECGE (Lead 1)',
+
     'mamba1_3blocks': 'UNet Mamba1-3B',
     'drnet_mamba1_3blocks': 'DRNET Mamba1-3B',
     'mamba2_3blocks': 'UNet Mamba2-3B',
     'drnet_mamba2_3blocks': 'DRNET Mamba2-3B',
+    'mamba1_3blocks_lead_1': 'UNet Mamba1-3B (Lead 1)',
+    'drnet_mamba1_3blocks_lead_1': 'DRNET Mamba1-3B (Lead 1)',
+    'mamba2_3blocks_lead_1': 'UNet Mamba2-3B (Lead 1)',
+    'drnet_mamba2_3blocks_lead_1': 'DRNET Mamba2-3B (Lead 1)',
+    'mamba1_3blocks_ls': 'UNet Mamba1-3B (Lead aware)',      # light blue
+    'drnet_mamba1_3blocks_ls': 'DRNET Mamba1-3B (Lead aware)',
 }
 
 OUR_MODELS = [
