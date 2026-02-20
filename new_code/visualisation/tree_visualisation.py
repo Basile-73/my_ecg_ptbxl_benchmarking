@@ -123,19 +123,26 @@ def get_auc(df, model, classifier, diagnosis):
 # HIERARCHY BUILDING
 # ──────────────────────────────────────────────────────────────
 def build_tree(diag_to_subclass, diag_to_class, subclass_to_class, all_diag_classes,
-               sample_counts, auc_lookup):
+               sample_counts, auc_lookup, color_lookup=None):
     """Build a nested structure for visualisation.
 
     Parameters
     ----------
-    auc_lookup : callable(diagnosis) -> float   returns AUC (or delta) for a diagnosis
+    auc_lookup    : callable(diagnosis) -> float   value shown in the label
+    color_lookup  : callable(diagnosis) -> float   value used for colouring
+                    (optional – defaults to auc_lookup)
 
     Returns
     -------
     tree : list of dicts, one per diagnostic_class
         Each dict has keys: name, auc, count, color, children (subclasses)
-        Each subclass dict has: name, auc, count, color, children (diagnoses)
+        If color_lookup is given, each node also has a "color_value" key.
     """
+    if color_lookup is None:
+        color_lookup = auc_lookup
+
+    has_separate_color = color_lookup is not auc_lookup
+
     # Group diagnoses by subclass, subclasses by class
     # Only include diagnoses that appear in our AUC data
     diag_names = [d for d in diag_to_class if not np.isnan(auc_lookup(d))]
@@ -162,55 +169,73 @@ def build_tree(diag_to_subclass, diag_to_class, subclass_to_class, all_diag_clas
             continue
         dc_count = 0
         dc_auc_vals = []
+        dc_color_vals = []
         dc_weights = []
         sc_nodes = []
         for sc in sorted(class_subclasses[dc]):
             sc_count = 0
             sc_auc_vals = []
+            sc_color_vals = []
             sc_weights = []
             diag_nodes = []
             for d in sorted(subclass_diags[sc]):
                 auc_val = auc_lookup(d)
+                color_val = color_lookup(d)
                 cnt = sample_counts.get(d, 0)
-                diag_nodes.append({
+                node = {
                     "name": d,
                     "auc": auc_val,
                     "count": cnt,
                     "color": CLASS_COLORS.get(dc, "#333333"),
-                })
+                }
+                if has_separate_color:
+                    node["color_value"] = color_val
+                diag_nodes.append(node)
                 sc_count += cnt
                 sc_auc_vals.append(auc_val)
+                sc_color_vals.append(color_val if not np.isnan(color_val) else 0.0)
                 sc_weights.append(cnt)
 
-            # Weighted average AUC for subclass
+            # Weighted average for subclass
             if sum(sc_weights) > 0:
                 sc_auc = np.average(sc_auc_vals, weights=sc_weights)
+                sc_color = np.average(sc_color_vals, weights=sc_weights)
             else:
                 sc_auc = np.mean(sc_auc_vals) if sc_auc_vals else np.nan
+                sc_color = np.mean(sc_color_vals) if sc_color_vals else np.nan
             dc_count += sc_count
             dc_auc_vals.extend(sc_auc_vals)
+            dc_color_vals.extend(sc_color_vals)
             dc_weights.extend(sc_weights)
 
-            sc_nodes.append({
+            sc_node = {
                 "name": sc,
                 "auc": sc_auc,
                 "count": sc_count,
                 "color": CLASS_COLORS.get(dc, "#333333"),
                 "children": diag_nodes,
-            })
+            }
+            if has_separate_color:
+                sc_node["color_value"] = sc_color
+            sc_nodes.append(sc_node)
 
-        # Weighted average AUC for class
+        # Weighted average for class
         if sum(dc_weights) > 0:
             dc_auc = np.average(dc_auc_vals, weights=dc_weights)
+            dc_color = np.average(dc_color_vals, weights=dc_weights)
         else:
             dc_auc = np.mean(dc_auc_vals) if dc_auc_vals else np.nan
-        tree.append({
+            dc_color = np.mean(dc_color_vals) if dc_color_vals else np.nan
+        dc_node = {
             "name": dc,
             "auc": dc_auc,
             "count": dc_count,
             "color": CLASS_COLORS.get(dc, "#333333"),
             "children": sc_nodes,
-        })
+        }
+        if has_separate_color:
+            dc_node["color_value"] = dc_color
+        tree.append(dc_node)
 
     return tree
 
@@ -221,7 +246,7 @@ def build_tree(diag_to_subclass, diag_to_class, subclass_to_class, all_diag_clas
 MARKER_SIZE_LEAF = 320       # scatter marker size in points² (always round)
 MARKER_SIZE_SUBCLASS = 400
 MARKER_SIZE_CLASS = 560
-LEVEL_X = [0.10, 0.3, 0.60]  # x positions of the 3 levels (closer together)
+LEVEL_X = [0.10, 0.2, 0.50]  # x positions of the 3 levels (closer together)
 Y_MARGIN = 0.02  # top/bottom margin
 TEXT_PAD = 0.025  # horizontal gap between marker centre and label
 
@@ -266,6 +291,7 @@ def _get_node_color(base_color, auc, is_delta, vmin, vmax):
     """Return the fill color for a node circle.
 
     For absolute AUC: shade the base_color by AUC (lighter = higher).
+        Uses the actual data range [vmin, vmax] for better contrast.
     For delta trees: green for positive, red for negative.
         Intensity follows a log scale so outliers don't wash everything else out.
     """
@@ -286,34 +312,54 @@ def _get_node_color(base_color, auc, is_delta, vmin, vmax):
             b = 1.0 - intensity * 1.0
         return (max(r, 0), max(g, 0), max(b, 0))
     else:
-        # Use the class base_color with alpha proportional to AUC
+        # Use the class base_color, darken proportional to AUC
+        # Rescale to actual data range so colours spread across the full gradient
         from matplotlib.colors import to_rgba
         r, g, b, _ = to_rgba(base_color)
-        # Map AUC 0.5..1.0 to alpha 0.3..1.0
-        alpha = 0.3 + 0.7 * max(0, min(1, (auc - 0.5) / 0.5))
-        # Blend with white
-        r2 = r * alpha + 1.0 * (1 - alpha)
-        g2 = g * alpha + 1.0 * (1 - alpha)
-        b2 = b * alpha + 1.0 * (1 - alpha)
-        return (r2, g2, b2)
+        data_range = vmax - vmin
+        if data_range > 0:
+            t = max(0, min(1, (auc - vmin) / data_range))
+        else:
+            t = 0.5
+        # t=0 (lowest AUC) -> very light pastel, t=1 (highest AUC) -> full dark
+        # Light end:  base*0.3 + white*0.7  (pastel)
+        # Dark end:   base*1.0 + black*0.3  (rich dark)
+        lightness = 1.0 - t
+        r2 = r * (0.3 + 0.7 * t) * (0.7 + 0.3 * t) + lightness * 0.5
+        g2 = g * (0.3 + 0.7 * t) * (0.7 + 0.3 * t) + lightness * 0.5
+        b2 = b * (0.3 + 0.7 * t) * (0.7 + 0.3 * t) + lightness * 0.5
+        return (min(r2, 1), min(g2, 1), min(b2, 1))
+
+
+def _node_color_value(node):
+    """Return the value used for colouring (color_value if present, else auc)."""
+    return node.get("color_value", node["auc"])
 
 
 def draw_tree(tree, title, save_path, is_delta=False):
-    """Draw the 3-level tree to a figure and save it."""
+    """Draw the 3-level tree to a figure and save it.
+
+    If tree nodes contain a "color_value" key, that value drives the colour
+    (using the delta green/red scheme) while "auc" is shown in the labels.
+    """
     # Compute total leaves for vertical spacing
     n_leaves = _count_leaves(tree)
     if n_leaves == 0:
         print(f"  Skipping {title}: no data")
         return
 
-    # Collect all AUC values for color normalization
+    # Check whether nodes carry a separate color_value
+    has_color_value = "color_value" in tree[0]
+    color_is_delta = is_delta or has_color_value
+
+    # Collect all colour-driving values for normalization
     all_aucs = []
     for dc in tree:
-        all_aucs.append(dc["auc"])
+        all_aucs.append(_node_color_value(dc))
         for sc in dc["children"]:
-            all_aucs.append(sc["auc"])
+            all_aucs.append(_node_color_value(sc))
             for d in sc["children"]:
-                all_aucs.append(d["auc"])
+                all_aucs.append(_node_color_value(d))
     all_aucs = [a for a in all_aucs if not np.isnan(a)]
     vmin = min(all_aucs) if all_aucs else -0.1
     vmax = max(all_aucs) if all_aucs else 0.1
@@ -370,14 +416,14 @@ def draw_tree(tree, title, save_path, is_delta=False):
                 ax.plot([sc_x, d_x], [sc_y, d_y], color="#cccccc", linewidth=0.8, zorder=1)
 
                 # Draw diagnosis node (scatter = always round)
-                fill = _get_node_color(d["color"], d["auc"], is_delta, vmin, vmax)
+                fill = _get_node_color(d["color"], _node_color_value(d), color_is_delta, vmin, vmax)
                 ax.scatter(d_x, d_y, s=MARKER_SIZE_LEAF, c=[fill], edgecolors=d["color"],
                            linewidths=1.2, zorder=3, clip_on=False)
                 label = _format_label(d["name"], d["auc"], d["count"], is_delta)
                 ax.text(d_x + TEXT_PAD, d_y, label, va="center", fontsize=fontsize_label, zorder=4)
 
             # Draw subclass node
-            fill = _get_node_color(sc["color"], sc["auc"], is_delta, vmin, vmax)
+            fill = _get_node_color(sc["color"], _node_color_value(sc), color_is_delta, vmin, vmax)
             ax.scatter(sc_x, sc_y, s=MARKER_SIZE_SUBCLASS, c=[fill], edgecolors=sc["color"],
                        linewidths=1.5, zorder=3, clip_on=False)
             label = _format_label(sc["name"], sc["auc"], sc["count"], is_delta)
@@ -385,12 +431,44 @@ def draw_tree(tree, title, save_path, is_delta=False):
                     fontweight="bold", zorder=4)
 
         # Draw class node
-        fill = _get_node_color(dc["color"], dc["auc"], is_delta, vmin, vmax)
+        fill = _get_node_color(dc["color"], _node_color_value(dc), color_is_delta, vmin, vmax)
         ax.scatter(dc_x, dc_y, s=MARKER_SIZE_CLASS, c=[fill], edgecolors=dc["color"],
                    linewidths=2, zorder=3, clip_on=False)
         label = _format_label(dc["name"], dc["auc"], dc["count"], is_delta)
         ax.text(dc_x - TEXT_PAD, dc_y, label, va="center", ha="right", fontsize=fontsize_label + 2,
                 fontweight="bold", zorder=4)
+
+    # Add a colorbar legend for delta / hybrid trees
+    if color_is_delta:
+        from matplotlib.colors import LinearSegmentedColormap
+        import matplotlib.colorbar as mcolorbar
+
+        # Build a red-white-green colormap matching _get_node_color logic
+        cmap_colors = []
+        n_steps = 256
+        for i in range(n_steps):
+            val = vmin + (vmax - vmin) * i / (n_steps - 1)
+            intensity = _log_intensity(val)
+            if val >= 0:
+                cr = 1.0 - intensity * 1.0
+                cg = 1.0 - intensity * 0.45
+                cb = 1.0 - intensity * 1.0
+            else:
+                cr = 1.0 - intensity * 0.2
+                cg = 1.0 - intensity * 1.0
+                cb = 1.0 - intensity * 1.0
+            cmap_colors.append((max(cr, 0), max(cg, 0), max(cb, 0)))
+        cmap = LinearSegmentedColormap.from_list("delta", cmap_colors, N=n_steps)
+        norm = Normalize(vmin=vmin, vmax=vmax)
+
+        # Place colorbar at the bottom of the figure
+        cbar_ax = fig.add_axes([0.25, -0.02, 0.5, 0.012])
+        sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
+        sm.set_array([])
+        cbar = fig.colorbar(sm, cax=cbar_ax, orientation="horizontal")
+        label_text = "Improvement over noisy" if has_color_value else "AUC delta"
+        cbar.set_label(label_text, fontsize=fontsize_label)
+        cbar.ax.tick_params(labelsize=fontsize_label - 2)
 
     plt.tight_layout()
     plt.savefig(save_path, dpi=150, bbox_inches="tight")
@@ -483,6 +561,16 @@ def main():
                       f"AUC Improvement over {imunet} - {model_display} / {clf_display}",
                       OUTPUT_DIR / f"{prefix}__4_vs_imunet.png",
                       is_delta=True)
+
+            # Tree 5: Absolute AUC (labels) coloured by improvement over noisy
+            tree = build_tree(diag_to_subclass, diag_to_class, subclass_to_class,
+                              all_diag_classes, sample_counts,
+                              auc_lookup=auc_absolute,
+                              color_lookup=auc_minus_noisy)
+            draw_tree(tree,
+                      f"Absolute AUC (coloured by improvement over noisy) - {model_display} / {clf_display}",
+                      OUTPUT_DIR / f"{prefix}__5_absolute_colored_by_noisy.png",
+                      is_delta=False)
 
     print(f"\nAll trees saved to {OUTPUT_DIR}")
 
