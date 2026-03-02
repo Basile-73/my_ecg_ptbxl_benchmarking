@@ -5,61 +5,59 @@ import numpy as np
 
 from maps import COLOR_MAP, NAME_MAP, plot_font_sizes
 
-choice = 'european'
-legend = True
-save_figure = False
+choice = 'european' # 'european', 'sinus', 'ptb-xl', 'synthetic'
+legend = False
+save_figure = True
 save_table = False
 
 
 models = [
-    # 'chiang_dae',
-    # 'ant_drnn',
-    # 'mecge_phase',
-    # 'unet',
-    # 'drnet_unet',
-    # 'imunet',
-    # 'drnet_imunet',
-    # 'unet_mamba',
-    # 'unet_mamba_bidir',
-    # 'mamba1_3blocks',
-    # 'drnet_mamba1_3blocks',
-    # 'mamba2_3blocks',
-    # 'drnet_mamba2_3blocks',
+    'chiang_dae',
+    'ant_drnn',
+    'mecge_phase',
+    'unet',
+    'drnet_unet',
+    'imunet',
+    'drnet_imunet',
+    'mamba1_3blocks',
+    #'mamba2_3blocks',
+    'drnet_mamba1_3blocks',
+    #'drnet_mamba2_3blocks',
 
-    'mamba1_3blocks_ptb_l0',
-    'mamba1_3blocks_ptb_l1',
-    'mamba1_3blocks_ptb_l2',
-    'mamba1_3blocks_ptb_l3',
-    'mamba1_3blocks_ptb_l4',
-    'mamba1_3blocks_ptb_l5',
-    'mamba1_3blocks_ptb_l6',
-    'mamba1_3blocks_ptb_l7',
-    'mamba1_3blocks_ptb_l8',
-    'mamba1_3blocks_ptb_l9',
-    'mamba1_3blocks_ptb_l10',
-    'mamba1_3blocks_ptb_l11',
-    'mamba1_3blocks_ptb_all',
-    'drnet_mamba1_3blocks_l0',
-    'drnet_mamba1_3blocks_l1',
-    'drnet_mamba1_3blocks_l2',
-    'drnet_mamba1_3blocks_l3',
-    'drnet_mamba1_3blocks_l4',
-    'drnet_mamba1_3blocks_l5',
-    'drnet_mamba1_3blocks_l6',
-    'drnet_mamba1_3blocks_l7',
-    'drnet_mamba1_3blocks_l8',
-    'drnet_mamba1_3blocks_l9',
-    'drnet_mamba1_3blocks_l10',
-    'drnet_mamba1_3blocks_l11',
-    'drnet_mamba1_3blocks_all',
+    # 'mamba1_3blocks_ptb_l0',
+    # 'mamba1_3blocks_ptb_l1',
+    # 'mamba1_3blocks_ptb_l2',
+    # 'mamba1_3blocks_ptb_l3',
+    # 'mamba1_3blocks_ptb_l4',
+    # 'mamba1_3blocks_ptb_l5',
+    # 'mamba1_3blocks_ptb_l6',
+    # 'mamba1_3blocks_ptb_l7',
+    # 'mamba1_3blocks_ptb_l8',
+    # 'mamba1_3blocks_ptb_l9',
+    # 'mamba1_3blocks_ptb_l10',
+    # 'mamba1_3blocks_ptb_l11',
+    # 'mamba1_3blocks_ptb_all',
+    # 'drnet_mamba1_3blocks_l0',
+    # 'drnet_mamba1_3blocks_l1',
+    # 'drnet_mamba1_3blocks_l2',
+    # 'drnet_mamba1_3blocks_l3',
+    # 'drnet_mamba1_3blocks_l4',
+    # 'drnet_mamba1_3blocks_l5',
+    # 'drnet_mamba1_3blocks_l6',
+    # 'drnet_mamba1_3blocks_l7',
+    # 'drnet_mamba1_3blocks_l8',
+    # 'drnet_mamba1_3blocks_l9',
+    # 'drnet_mamba1_3blocks_l10',
+    # 'drnet_mamba1_3blocks_l11',
+    # 'drnet_mamba1_3blocks_all',
 
 ]
 
 datasets = {
-    'european': 'all_models_europe/european_st_t/14400',
+    'european': 'reproduce_eu/european_st_t',
     'sinus': 'all_models_sinus/mitbih_sinus/14400',
     'ptb-xl': 'all_models_ptb_xl/3600',
-    'synthetic': ''
+    'synthetic': 'reproduce_syn/synthetic'
 }
 
 dfs = []
@@ -74,10 +72,12 @@ dfs = []
 #     df["model"] = model
 #     dfs.append(df)
 
-
 for model in models:
-    folder_name = f'3600_{model}'
-    df = pd.read_csv(f'../outputs/LS_mamba_ptb_xl/ptb_xl/{folder_name}/results.csv')
+    if model == 'mecge_phase':
+        model_name = f'1800_{model}'
+    else:
+        model_name = f'14400_{model}'
+    df = pd.read_csv(f'../outputs/{datasets[choice]}/{model_name}/results.csv')
     df['model'] = model
     dfs.append(df)
 
@@ -161,7 +161,7 @@ if legend == True:
 plt.tight_layout(rect=[0, 0.05, 1, 1])
 
 if save_figure:
-    save_path = Path(f'../outputs/AAA_plots/{choice}_{legend}.png')
+    save_path = Path(f'../outputs/plots/{choice}_{legend}.png')
     plt.savefig(save_path, dpi=300, bbox_inches='tight')
     print(f"Figure saved to {save_path}")
 
