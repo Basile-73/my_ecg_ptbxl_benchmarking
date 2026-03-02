@@ -25,6 +25,7 @@ def set_epochs(experiment_name):
     for p in Path(f'experiments/{experiment_name}/model_configs').glob("*.yaml"):
         data = ryaml.load(p)
         data['training']['epochs'] = 1
+        #data['data_volume']['n_samples_train'] = 8192
         ryaml.dump(data, p)
 
 # check_paths('NEXT_mamba_synthetic')

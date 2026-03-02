@@ -1,13 +1,15 @@
 
 # 1. load the test config
 import yaml
-config_name = 'ptb_xl'
+import numpy as np
+config_name = 'high_range2'
 test_config = yaml.safe_load(open(f'experiments/noise_study/{config_name}.yaml'))
 
 # 2. create noise configs and save them in noise/configs/temp
-import numpy as np
 all_noise_levels = {}
 resolution = test_config['noise']['steps']
+plausible_range = test_config['noise'].get('plausible_range', None)  # backward compat
+
 for noise_type in ['em', 'bw', 'ma', 'AWGN']:
      noise_range = [test_config['noise']['range'][noise_type][0], test_config['noise']['range'][noise_type][1]]
      noise_levels = np.linspace(noise_range[0], noise_range[1], resolution)
@@ -20,12 +22,37 @@ for noise_type in ['em', 'bw', 'ma', 'AWGN']:
           noise_config['SNR'][noise_type] = float(noise_levels[i])
           yaml.dump(noise_config, open(f'noise/configs/temp/{noise_type}/{i}.yaml', 'w'))
 
+# Combined noise levels: linspace over plausible_range (or fall back to original range)
+combined_noise_levels = {}
+for noise_type in ['em', 'bw', 'ma', 'AWGN']:
+    if plausible_range is not None:
+        lo, hi = plausible_range[noise_type][0], plausible_range[noise_type][1]
+    else:
+        lo, hi = test_config['noise']['range'][noise_type][0], test_config['noise']['range'][noise_type][1]
+    combined_noise_levels[noise_type] = np.linspace(lo, hi, resolution)
+
 for i in range(resolution):
     noise_config = {'SNR': {'em': None, 'ma': None, 'bw': None, 'AWGN': None}}
     for noise_type in ['em', 'bw', 'ma', 'AWGN']:
-        noise_config['SNR'][noise_type] = float(all_noise_levels[noise_type][i])
+        noise_config['SNR'][noise_type] = float(combined_noise_levels[noise_type][i])
     yaml.dump(noise_config, open(f'noise/configs/temp/combined/{i}.yaml', 'w'))
 
+
+def _combined_snr_db(snr_db_dict):
+    """Compute combined SNR (dB) for independent noise sources.
+
+    Uses: SNR_combined = 1 / sum(1 / SNR_linear_i) for each active noise type.
+    Returns None if all sources are None/zero.
+    """
+    inv_sum = 0.0
+    for snr_db in snr_db_dict.values():
+        if snr_db is not None:
+            snr_lin = 10 ** (snr_db / 10.0)
+            if snr_lin > 0:
+                inv_sum += 1.0 / snr_lin
+    if inv_sum == 0:
+        return None
+    return float(10.0 * np.log10(1.0 / inv_sum))
 
 
 # 3. build and filter all model configs
@@ -51,11 +78,20 @@ for experiment in test_config['experiments']:
     all_configs = []
     # One config per model, noise_type and resolution
     for base_config in configs:
-        for noise_type in ['em', 'bw', 'ma', 'AWGN', 'combined']:
+        for noise_type in ['em', 'bw', 'ma', 'AWGN']:
             for i in range(resolution):
                 config = deepcopy(base_config)
                 config['noise_paths']['config_path'] = f'noise/configs/temp/{noise_type}/{i}.yaml'
+                config['_snr_value'] = float(all_noise_levels[noise_type][i])
                 all_configs.append(config)
+
+        # combined: linspace over plausible_range (or original range if not set)
+        for i in range(resolution):
+            config = deepcopy(base_config)
+            config['noise_paths']['config_path'] = f'noise/configs/temp/combined/{i}.yaml'
+            snr_vals = {nt: float(combined_noise_levels[nt][i]) for nt in ['em', 'bw', 'ma', 'AWGN']}
+            config['_snr_value'] = _combined_snr_db(snr_vals)
+            all_configs.append(config)
 
 # 5. Evaluate for each config and append results
     from train_multiple import group_configs, get_model_weights_name, save_config
@@ -72,20 +108,20 @@ for experiment in test_config['experiments']:
                 config_path=config_path,
                 experiment_name=experiment_name,
             )
-            # append results here
+# 6. Format results
+            res = evaluator.results
+            res['model_type'] = config['model']['type']
+            res['model_name'] = config['model']['name']
+            res['dataset'] = config['dataset']
+            res['noise_type'] = config['noise_paths']['config_path'].split('/')[-2]
+            res['noise_level'] = config['noise_paths']['config_path'].split('/')[-1].split('.')[0]
+            res['snr_value'] = config.get('_snr_value')  # actual SNR in dB (None if unavailable)
+            res['experiment_name'] = experiment_name
+            final_res.append(res)
          except Exception as e:
             print(f"Error occurred while evaluating {config['model']['type']}: {str(e)}")
             traceback.print_exc()
             continue  # Continue to the next configuration
-# 6. Format results
-         res = evaluator.results
-         res['model_type'] = config['model']['type']
-         res['model_name'] = config['model']['name']
-         res['dataset'] = config['dataset']
-         res['noise_type'] = config['noise_paths']['config_path'].split('/')[-2]
-         res['noise_level'] = config['noise_paths']['config_path'].split('/')[-1].split('.')[0]
-         res['experiment_name'] = experiment_name
-         final_res.append(res)
 
 # 7. Create logic to store the results
 import pandas as pd
