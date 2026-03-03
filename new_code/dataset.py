@@ -334,8 +334,12 @@ class EuropeanSTTDataset(MITBihSinDataset):
             data_path: str,
             median: Optional[float] = None,
             iqr: Optional[float] = None,
-            save_clean_samples: bool = False
+            save_clean_samples: bool = False,
+            highcut: float = 15.0,
+            lowcut: float = 1.0,
+            alpha: float = 2.0,
     ):
+        self.lowcut = lowcut
         super().__init__(
             n_samples=n_samples,
             noise_factory=noise_factory,
@@ -344,12 +348,14 @@ class EuropeanSTTDataset(MITBihSinDataset):
             data_path=data_path,
             median=median,
             iqr=iqr,
-            save_clean_samples=save_clean_samples
+            save_clean_samples=save_clean_samples,
+            highcut=highcut,
+            alpha=alpha,
         )
         self.dataset_type = "european_st_t"
 
     def _get_sampleset_name(self):
-        return get_sampleset_name_european_st_t(self.duration, self.n_samples, self.mode)
+        return get_sampleset_name_european_st_t(self.duration, self.n_samples, self.mode, self.lowcut, self.highcut, self.alpha)
 
     def _generate_samples(self):
         fs_native = 250  # European ST-T native sampling rate
@@ -399,9 +405,9 @@ class EuropeanSTTDataset(MITBihSinDataset):
                     X.append(sig_resampled[seg_idx*win:(seg_idx+1)*win])
 
         X = np.stack(X)
-        X = bandpass_filter(X, fs_target, highcut=15)
-        alpha = 2
-        X = np.sign(X) * np.log1p(alpha * np.abs(X))
+        X = bandpass_filter(X, fs_target, lowcut=self.lowcut, highcut=self.highcut)
+        if self.alpha is not None:
+            X = np.sign(X) * np.log1p(self.alpha * np.abs(X))
         return X
 
 

@@ -154,7 +154,10 @@ def get_data_set(config_path: Path, mode: str, noise_factory: NoiseFactory, medi
             data_path=config["european_st_t_params"]["data_path"],
             median = median,
             iqr = iqr,
-            save_clean_samples=config['data_volume']['save_clean_samples']
+            save_clean_samples=config['data_volume']['save_clean_samples'],
+            highcut=config["european_st_t_params"].get("highcut", 15.0),
+            lowcut=config["european_st_t_params"].get("lowcut", 1.0),
+            alpha=config["european_st_t_params"].get("alpha", 2.0),
         )
     elif dataset_name == "synthetic":
         from dataset import LengthExperimentDataset
@@ -251,8 +254,8 @@ def get_sampleset_name_mitbh_sin(duration, n_samples, mode):
     name = f'mitbih_sinus_{duration}_n_samples_{n_samples}_mode_{mode}'
     return name
 
-def get_sampleset_name_european_st_t(duration, n_samples, mode):
-    name = f'european_st_t_{duration}_n_samples_{n_samples}_mode_{mode}'
+def get_sampleset_name_european_st_t(duration, n_samples, mode, lowcut=1.0, highcut=15.0, alpha=2.0):
+    name = f'european_st_t_{duration}_n_samples_{n_samples}_lc_{lowcut}_hc_{highcut}_alpha_{alpha}_mode_{mode}'
     return name
 
 def get_sampleset_name_ptbxl(split_length: int, folds: List[int], original_fs: int, mode: str, lead_index: int) -> str:
