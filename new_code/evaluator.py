@@ -108,7 +108,9 @@ class Evaluator:
                 folds=folds,
                 original_fs=self.ptb_xl_params['original_sampling_rate'],
                 mode='train',
-                lead_index=self.ptb_xl_params.get('lead_index', 0)
+                lead_index=self.ptb_xl_params.get('lead_index', 0),
+                select_best_lead=self.ptb_xl_params.get('select_best_lead', False),
+                remove_bad_labels=self.ptb_xl_params.get('remove_bad_labels', False),
             )
         else:
             raise ValueError(f"Dataset type {self.dataset_type} not recognized")

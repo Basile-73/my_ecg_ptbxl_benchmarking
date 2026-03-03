@@ -14,6 +14,7 @@ from utils.getters import (
     get_sampleset_name_ptbxl,
 )
 from utils.getters import bandpass_filter
+from utils.preprocessing import remove_bad_labels_from_df, select_best_lead_for_record
 import time
 import glob
 import wfdb
@@ -423,7 +424,14 @@ class PTBXLLengthDataset(LengthExperimentDataset):
         iqr: Optional[float] = None,
         save_clean_samples: bool = False,
         lead_index: int = 0,
+        select_best_lead: bool = False,
+        remove_bad_labels: bool = False,
     ):
+        if select_best_lead and lead_index is not None:
+            raise ValueError(
+                "select_best_lead=True requires lead_index=None. "
+                "Cannot select best lead when a specific lead index is set."
+            )
         assert original_sampling_frequency in (100, 500), "PTB-XL supports 100 Hz or 500 Hz"
         self.data_path = data_path
         self.database_path = os.path.join(self.data_path, "ptbxl_database.csv")
@@ -432,6 +440,8 @@ class PTBXLLengthDataset(LengthExperimentDataset):
         self.original_sampling_frequency = original_sampling_frequency
         self.n_folds_requested = n_folds
         self.lead_index = lead_index
+        self.select_best_lead = select_best_lead
+        self.remove_bad_labels = remove_bad_labels
         self._target_sampling_rate = noise_factory.sampling_rate
         assert self._target_sampling_rate == 360, "PTB-XL currently resamples to 360 Hz"
         self._validate_split_length(split_length)
@@ -492,6 +502,8 @@ class PTBXLLengthDataset(LengthExperimentDataset):
             original_fs=self.original_sampling_frequency,
             mode=self.noise_factory.mode,
             lead_index=self.lead_index,
+            select_best_lead=self.select_best_lead,
+            remove_bad_labels=self.remove_bad_labels,
         )
 
     def _generate_samples(self):
@@ -500,17 +512,33 @@ class PTBXLLengthDataset(LengthExperimentDataset):
         if df.empty:
             raise ValueError(f"No PTB-XL records found for folds {self.selected_folds}")
 
+        if self.remove_bad_labels:
+            df = remove_bad_labels_from_df(df)
+            if df.empty:
+                raise ValueError("No PTB-XL records remaining after removing bad labels")
+
         filename_col = "filename_lr" if self.original_sampling_frequency == 100 else "filename_hr"
         segments = []
+        selected_leads = []  # track which lead was selected per record (for select_best_lead)
+
         for _, row in df.iterrows():
             record_base = os.path.join(self.data_path, row[filename_col])
             sig, _ = wfdb.rdsamp(record_base)
-            if self.lead_index is not None and sig.shape[1] <= self.lead_index:
-                raise ValueError(
-                    f"Record {record_base} has only {sig.shape[1]} leads, cannot select index {self.lead_index}"
-                )
-            if self.lead_index is None:
-                for lead in range(sig.shape[1]): # sig.shape[1] is number of leads, we want to iterate through all leads and treat them as separate samples
+
+            if self.select_best_lead:
+                best_ch = select_best_lead_for_record(sig, self.original_sampling_frequency)
+                primary = sig[:, best_ch]
+                resampled = self._resample(primary)
+                n_segments = len(resampled) // self.split_length
+                for i in range(n_segments):
+                    start = i * self.split_length
+                    end = start + self.split_length
+                    segments.append(resampled[start:end])
+                    selected_leads.append(best_ch)
+            elif self.lead_index is None:
+                if sig.shape[1] == 0:
+                    raise ValueError(f"Record {record_base} has no leads")
+                for lead in range(sig.shape[1]):
                     primary = sig[:, lead]
                     resampled = self._resample(primary)
                     n_segments = len(resampled) // self.split_length
@@ -519,6 +547,10 @@ class PTBXLLengthDataset(LengthExperimentDataset):
                         end = start + self.split_length
                         segments.append(resampled[start:end])
             else:
+                if sig.shape[1] <= self.lead_index:
+                    raise ValueError(
+                        f"Record {record_base} has only {sig.shape[1]} leads, cannot select index {self.lead_index}"
+                    )
                 primary = sig[:, self.lead_index]
                 resampled = self._resample(primary)
                 n_segments = len(resampled) // self.split_length
@@ -533,6 +565,15 @@ class PTBXLLengthDataset(LengthExperimentDataset):
         X = np.stack(segments)
         X = bandpass_filter(X, self._target_sampling_rate)
         self.n_samples = X.shape[0]
+
+        if self.save_clean_samples and self.select_best_lead and selected_leads:
+            lead_counts = pd.Series(selected_leads).value_counts().sort_index()
+            lead_dist = pd.DataFrame({
+                'lead_index': lead_counts.index,
+                'count': lead_counts.values,
+            })
+            lead_dist.to_csv(f"data/{self.sample_set_name}_lead_distribution.csv", index=False)
+
         return X
 
     def _resample(self, signal: np.ndarray) -> np.ndarray:

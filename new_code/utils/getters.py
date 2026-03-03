@@ -182,6 +182,8 @@ def get_data_set(config_path: Path, mode: str, noise_factory: NoiseFactory, medi
             iqr=iqr,
             save_clean_samples=config['data_volume']['save_clean_samples'],
             lead_index=config["ptb_xl_params"].get("lead_index", 0),
+            select_best_lead=config["ptb_xl_params"].get("select_best_lead", False),
+            remove_bad_labels=config["ptb_xl_params"].get("remove_bad_labels", False),
         )
     else:
         raise ValueError(f"Dataset ({dataset_name}) not found")
@@ -258,9 +260,16 @@ def get_sampleset_name_european_st_t(duration, n_samples, mode, lowcut=1.0, high
     name = f'european_st_t_{duration}_n_samples_{n_samples}_lc_{lowcut}_hc_{highcut}_alpha_{alpha}_mode_{mode}'
     return name
 
-def get_sampleset_name_ptbxl(split_length: int, folds: List[int], original_fs: int, mode: str, lead_index: int) -> str:
+def get_sampleset_name_ptbxl(split_length: int, folds: List[int], original_fs: int, mode: str, lead_index: int,
+                              select_best_lead: bool = False, remove_bad_labels: bool = False) -> str:
     folds_part = "-".join(str(f) for f in sorted(folds))
-    return f'ptb_xl_split_{split_length}_orig_{original_fs}_folds_{folds_part}_lead_{lead_index}_mode_{mode}'
+    name = f'ptb_xl_split_{split_length}_orig_{original_fs}_folds_{folds_part}_lead_{lead_index}'
+    if select_best_lead:
+        name += '_sbl'
+    if remove_bad_labels:
+        name += '_rbl'
+    name += f'_mode_{mode}'
+    return name
 
 def bandpass_filter(data: np.ndarray, fs:int, lowcut: float = 1.0, highcut: float = 45.0,
                     order: int = 2) -> np.ndarray:
