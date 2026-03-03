@@ -132,12 +132,12 @@ for ax, metric in zip(axes, ["RMSE", "SNR"]):
             ha="center", va="bottom", fontsize=plot_font_sizes['value_labels'], rotation=90
         )
 
-    ymin = (means - ylow).min() * 0.95
-    ymax = (means + yhigh).max() + text_pad * 17
-    if (metric == "RMSE") and (choice == 'european'):
-        ax.set_ylim(ymin, 0.8)
-    else:
-        ax.set_ylim(ymin, ymax)
+    data_top = (means + yhigh).max()
+    data_bot = (means - ylow).min()
+    data_range = data_top - data_bot
+    ymin = data_bot - data_range * 0.05
+    ymax = data_top + data_range * 0.25
+    ax.set_ylim(ymin, ymax)
 
     # Add dotted horizontal line for best performing model
     best_value = means.min() if metric == "RMSE" else means.max()
