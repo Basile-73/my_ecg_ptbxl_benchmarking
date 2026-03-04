@@ -14,7 +14,7 @@ from utils.getters import (
     get_sampleset_name_ptbxl,
 )
 from utils.getters import bandpass_filter
-from utils.preprocessing import remove_bad_labels_from_df, select_best_lead_for_record
+from utils.preprocessing import remove_bad_labels_from_df, select_best_lead_for_record, moving_average_filter
 import time
 import glob
 import wfdb
@@ -339,8 +339,10 @@ class EuropeanSTTDataset(MITBihSinDataset):
             highcut: float = 15.0,
             lowcut: float = 1.0,
             alpha: float = 2.0,
+            ma_window: Optional[int] = None,
     ):
         self.lowcut = lowcut
+        self.ma_window = ma_window
         super().__init__(
             n_samples=n_samples,
             noise_factory=noise_factory,
@@ -356,7 +358,7 @@ class EuropeanSTTDataset(MITBihSinDataset):
         self.dataset_type = "european_st_t"
 
     def _get_sampleset_name(self):
-        return get_sampleset_name_european_st_t(self.duration, self.n_samples, self.mode, self.lowcut, self.highcut, self.alpha)
+        return get_sampleset_name_european_st_t(self.duration, self.n_samples, self.mode, self.lowcut, self.highcut, self.alpha, self.ma_window)
 
     def _generate_samples(self):
         fs_native = 250  # European ST-T native sampling rate
@@ -407,6 +409,8 @@ class EuropeanSTTDataset(MITBihSinDataset):
 
         X = np.stack(X)
         X = bandpass_filter(X, fs_target, lowcut=self.lowcut, highcut=self.highcut)
+        if self.ma_window is not None:
+            X = moving_average_filter(X, self.ma_window)
         if self.alpha is not None:
             X = np.sign(X) * np.log1p(self.alpha * np.abs(X))
         return X

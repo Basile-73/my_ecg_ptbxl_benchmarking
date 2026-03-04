@@ -98,6 +98,7 @@ class Evaluator:
                 lowcut=self.european_st_t_params.get("lowcut", 1.0),
                 highcut=self.european_st_t_params.get("highcut", 15.0),
                 alpha=self.european_st_t_params.get("alpha", 2.0),
+                ma_window=self.european_st_t_params.get("ma_window", None),
             )
         elif self.dataset_type == 'ptb_xl':
             if not self.ptb_xl_params:
