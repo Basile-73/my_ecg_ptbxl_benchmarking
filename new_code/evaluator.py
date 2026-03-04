@@ -49,6 +49,7 @@ class Evaluator:
             config = yaml.safe_load(f)
         self.dataset_type = config["dataset"]
         self.ptb_xl_params = config.get("ptb_xl_params")
+        self.european_st_t_params = config.get("european_st_t_params", {})
         self.train_sample_set_name = self._get_sampleset_name()
 
         scaler_stats = np.loadtxt(f'data/{self.train_sample_set_name}_scaler_stats')
@@ -93,7 +94,11 @@ class Evaluator:
             return get_sampleset_name_european_st_t(
                 self.duration,
                 self.data_volumne['n_samples_train'],
-                'train'
+                'train',
+                lowcut=self.european_st_t_params.get("lowcut", 1.0),
+                highcut=self.european_st_t_params.get("highcut", 15.0),
+                alpha=self.european_st_t_params.get("alpha", 2.0),
+                ma_window=self.european_st_t_params.get("ma_window", None),
             )
         elif self.dataset_type == 'ptb_xl':
             if not self.ptb_xl_params:
@@ -104,7 +109,9 @@ class Evaluator:
                 folds=folds,
                 original_fs=self.ptb_xl_params['original_sampling_rate'],
                 mode='train',
-                lead_index=self.ptb_xl_params.get('lead_index', 0)
+                lead_index=self.ptb_xl_params.get('lead_index', 0),
+                select_best_lead=self.ptb_xl_params.get('select_best_lead', False),
+                remove_bad_labels=self.ptb_xl_params.get('remove_bad_labels', False),
             )
         else:
             raise ValueError(f"Dataset type {self.dataset_type} not recognized")
