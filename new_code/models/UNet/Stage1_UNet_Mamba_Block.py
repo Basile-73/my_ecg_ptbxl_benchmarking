@@ -29,6 +29,20 @@ sys.path.append(osp.dirname(osp.dirname(osp.abspath(__file__))))
 from mamba_layer import ResidualMambaLayer, ResidualMambaBlockLayer
 
 
+class LearnableCompression(nn.Module):
+    def __init__(self, alpha_init=1.0):
+        super().__init__()
+        self.log_alpha = nn.Parameter(torch.tensor(math.log(math.expm1(alpha_init))))
+
+    def forward(self, x):
+        alpha = F.softplus(self.log_alpha)
+        return torch.sign(x) * torch.log1p(alpha * x.abs())
+
+    def inverse(self, y):
+        alpha = F.softplus(self.log_alpha)
+        return torch.sign(y) * (torch.exp(y.abs()) - 1.0) / alpha
+
+
 #class SELayer(nn.Module):
 #    def __init__(self, channel, reduction):
 #        super(SELayer, self).__init__()
@@ -136,8 +150,11 @@ class conv_3_block_UP(nn.Module):
 
 class UNetMambaBlock(nn.Module):#库中的torch.nn.Module模块
     def __init__(self, in_channels=1, input_length=3600, d_state=256, d_conv=4,
-                 expand=4, bidirectional=False, channel_progression=None, d_intermediate=0, mamba_type='Mamba1', n_heads=1, n_blocks=1):
+                 expand=4, bidirectional=False, channel_progression=None, d_intermediate=0, mamba_type='Mamba1', n_heads=1, n_blocks=1,
+                 learnable_compression=False):
         super(UNetMambaBlock, self).__init__()
+
+        self.compression = LearnableCompression(alpha_init=float(learnable_compression)) if learnable_compression else None
 
         if channel_progression is None:
             channel_progression = [16, 32, 48]
@@ -184,6 +201,8 @@ class UNetMambaBlock(nn.Module):#库中的torch.nn.Module模块
 
 
     def forward(self, x):
+        if self.compression is not None:
+            x = self.compression(x)
 
         x1_1 = self.conv1(x)
         x1_2 = self.avepool1(x1_1)
@@ -206,6 +225,9 @@ class UNetMambaBlock(nn.Module):#库中的torch.nn.Module模块
         x2_5 = torch.cat((x2_5, x1_1), 1)
         x2_6 = self.conv7(x2_5)
         Xout = self.conv1m1(x2_6)
+
+        if self.compression is not None:
+            Xout = self.compression.inverse(Xout)
 
         return Xout
 

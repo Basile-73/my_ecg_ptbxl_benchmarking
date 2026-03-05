@@ -66,9 +66,11 @@ def get_model(model_type: str, **kwargs):
     elif model_type == "unet_mamba_block":
         from models.UNet.Stage1_UNet_Mamba_Block import UNetMambaBlock
         sequence_length = kwargs.get('sequence_length')
+        learnable_compression = mamba_params.get('learnable_compression', False)
         return UNetMambaBlock(input_length=sequence_length, d_state=d_state, d_conv=d_conv, expand=expand,
                               channel_progression=channel_progression, d_intermediate=d_intermediate,
-                              mamba_type=mamba_type, n_heads=n_heads, n_blocks=n_blocks)
+                              mamba_type=mamba_type, n_heads=n_heads, n_blocks=n_blocks,
+                              learnable_compression=learnable_compression)
     elif model_type == "mecge":
         from models.MECGE.MECGE import MECGE
         config_path = Path(__file__).parent.parent / 'models' / 'MECGE' / 'config' / 'MECGE_phase.yaml'
