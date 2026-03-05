@@ -243,9 +243,9 @@ def build_tree(diag_to_subclass, diag_to_class, subclass_to_class, all_diag_clas
 # ──────────────────────────────────────────────────────────────
 # DRAWING
 # ──────────────────────────────────────────────────────────────
-MARKER_SIZE_LEAF = 320       # scatter marker size in points² (always round)
-MARKER_SIZE_SUBCLASS = 400
-MARKER_SIZE_CLASS = 560
+MARKER_SIZE_LEAF = 672       # scatter marker size in points² (always round)
+MARKER_SIZE_SUBCLASS = 672
+MARKER_SIZE_CLASS = 672
 LEVEL_X = [0.10, 0.2, 0.50]  # x positions of the 3 levels (closer together)
 Y_MARGIN = 0.02  # top/bottom margin
 TEXT_PAD = 0.025  # horizontal gap between marker centre and label
@@ -412,19 +412,23 @@ def draw_tree(tree, title, save_path, is_delta=False):
             for d in sc["children"]:
                 d_x = LEVEL_X[2]
                 d_y = node_positions[("diag", d["name"])]
+                # Hide redundant child (single child with same name as parent subclass)
+                is_redundant = len(sc["children"]) == 1 and d["name"] == sc["name"]
+                node_alpha = 0.0 if is_redundant else 1.0
                 # Line: subclass -> diag
-                ax.plot([sc_x, d_x], [sc_y, d_y], color="#cccccc", linewidth=0.8, zorder=1)
+                ax.plot([sc_x, d_x], [sc_y, d_y], color="#cccccc", linewidth=0.8, zorder=1, alpha=node_alpha)
 
                 # Draw diagnosis node (scatter = always round)
                 fill = _get_node_color(d["color"], _node_color_value(d), color_is_delta, vmin, vmax)
-                ax.scatter(d_x, d_y, s=MARKER_SIZE_LEAF, c=[fill], edgecolors=d["color"],
-                           linewidths=1.2, zorder=3, clip_on=False)
-                label = _format_label(d["name"], d["auc"], d["count"], is_delta)
-                ax.text(d_x + TEXT_PAD, d_y, label, va="center", fontsize=fontsize_label, zorder=4)
+                ax.scatter(d_x, d_y, s=MARKER_SIZE_LEAF, c=[fill], edgecolors="black",
+                           linewidths=1.2, zorder=3, clip_on=False, alpha=node_alpha)
+                if not is_redundant:
+                    label = _format_label(d["name"], d["auc"], d["count"], is_delta)
+                    ax.text(d_x + TEXT_PAD, d_y, label, va="center", fontsize=fontsize_label, zorder=4)
 
             # Draw subclass node
             fill = _get_node_color(sc["color"], _node_color_value(sc), color_is_delta, vmin, vmax)
-            ax.scatter(sc_x, sc_y, s=MARKER_SIZE_SUBCLASS, c=[fill], edgecolors=sc["color"],
+            ax.scatter(sc_x, sc_y, s=MARKER_SIZE_SUBCLASS, c=[fill], edgecolors="black",
                        linewidths=1.5, zorder=3, clip_on=False)
             label = _format_label(sc["name"], sc["auc"], sc["count"], is_delta)
             ax.text(sc_x + TEXT_PAD, sc_y, label, va="center", fontsize=fontsize_label + 1,
@@ -432,7 +436,7 @@ def draw_tree(tree, title, save_path, is_delta=False):
 
         # Draw class node
         fill = _get_node_color(dc["color"], _node_color_value(dc), color_is_delta, vmin, vmax)
-        ax.scatter(dc_x, dc_y, s=MARKER_SIZE_CLASS, c=[fill], edgecolors=dc["color"],
+        ax.scatter(dc_x, dc_y, s=MARKER_SIZE_CLASS, c=[fill], edgecolors="black",
                    linewidths=2, zorder=3, clip_on=False)
         label = _format_label(dc["name"], dc["auc"], dc["count"], is_delta)
         ax.text(dc_x - TEXT_PAD, dc_y, label, va="center", ha="right", fontsize=fontsize_label + 2,
