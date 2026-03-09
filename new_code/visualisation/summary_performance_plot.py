@@ -5,10 +5,10 @@ import numpy as np
 
 from maps import COLOR_MAP, NAME_MAP, plot_font_sizes
 
-choice = 'european' # 'european', 'sinus', 'ptb-xl', 'synthetic'
+choice = 'ptb-xl' # 'european', 'sinus', 'ptb-xl', 'synthetic'
 legend = False
-save_figure = True
-save_table = False
+save_figure = False
+save_table = True
 
 
 models = [
@@ -54,9 +54,9 @@ models = [
 ]
 
 datasets = {
-    'european': 'reproduce_eu/european_st_t',
+    'european': 'reproduce_eu_smooth_report/european_st_t',
     'sinus': 'all_models_sinus/mitbih_sinus/14400',
-    'ptb-xl': 'all_models_ptb_xl/3600',
+    'ptb-xl': 'reproduce_ptbxl_report/ptb_xl',
     'synthetic': 'reproduce_syn/synthetic'
 }
 
@@ -76,7 +76,10 @@ for model in models:
     if model == 'mecge_phase':
         model_name = f'1800_{model}'
     else:
-        model_name = f'14400_{model}'
+        if choice != 'ptb-xl':
+             model_name = f'14400_{model}'
+        else:
+            model_name = f'3600_{model}'
     df = pd.read_csv(f'../outputs/{datasets[choice]}/{model_name}/results.csv')
     df['model'] = model
     dfs.append(df)
@@ -88,7 +91,7 @@ all_results = pd.concat(dfs, ignore_index=True)
 ################################################################################
 
 if save_table:
-    table_save_path = Path(f'../outputs/AAA_tabels/{choice}.csv')
+    table_save_path = Path(f'../outputs/tabels/{choice}.csv')
     all_results.to_csv(table_save_path, index=False)
     print(f"Results summary table saved to {table_save_path}")
 out = all_results
