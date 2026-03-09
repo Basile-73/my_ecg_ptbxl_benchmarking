@@ -2,7 +2,7 @@
 # 1. load the test config
 import yaml
 import numpy as np
-config_name = 'high_range2'
+config_name = 'high_range_smooth'
 test_config = yaml.safe_load(open(f'experiments/noise_study/{config_name}.yaml'))
 
 # 2. create noise configs and save them in noise/configs/temp
@@ -96,7 +96,7 @@ for experiment in test_config['experiments']:
 # 5. Evaluate for each config and append results
     from train_multiple import group_configs, get_model_weights_name, save_config
     import traceback
-    from evaluator import Evaluator
+    from evaluator import Evaluator, Stage2Evaluator
     stage_1_configs, stage_2_configs, mamba_configs = group_configs(all_configs)
 
     for config in [*stage_1_configs, *mamba_configs]:
@@ -122,6 +122,31 @@ for experiment in test_config['experiments']:
             print(f"Error occurred while evaluating {config['model']['type']}: {str(e)}")
             traceback.print_exc()
             continue  # Continue to the next configuration
+
+    for config in stage_2_configs:
+         print(f'Evaluating model: {config["model"]["type"]} with noise config: {config["noise_paths"]}')
+         config_path =f'outputs/temp/{datetime.now().strftime("%Y-%m-%d_%H-%M-%S-%f")}.yaml'
+         yaml.dump(config, open(config_path, 'w'))
+         try:
+            evaluator = Stage2Evaluator(
+                config_path=config_path,
+                stage1_type=config["model"]["stage_1_type"],
+                stage1_weights_path=config["model"]["stage_1_weights_path"],
+                experiment_name=experiment_name,
+            )
+            res = evaluator.results
+            res['model_type'] = config['model']['type']
+            res['model_name'] = config['model']['name']
+            res['dataset'] = config['dataset']
+            res['noise_type'] = config['noise_paths']['config_path'].split('/')[-2]
+            res['noise_level'] = config['noise_paths']['config_path'].split('/')[-1].split('.')[0]
+            res['snr_value'] = config.get('_snr_value')
+            res['experiment_name'] = experiment_name
+            final_res.append(res)
+         except Exception as e:
+            print(f"Error occurred while evaluating {config['model']['type']}: {str(e)}")
+            traceback.print_exc()
+            continue
 
 # 7. Create logic to store the results
 import pandas as pd
