@@ -9,8 +9,15 @@ models_to_ignore = [
     # Example: 'unet_mamba', 'unet_mamba_bidir'
 ]
 
+# Metrics to ignore in the output table
+metrics_to_ignore = [
+    # Add metric names here to exclude them from the table
+    # Example: 'PCC'
+    'PCC'
+]
+
 # Directory containing the CSV files
-csv_dir = Path('/local/home/bamorel/my_ecg_ptbxl_benchmarking/new_code/outputs/AAA_tabels')
+csv_dir = Path('/local/home/bamorel/my_ecg_ptbxl_benchmarking/new_code/outputs/tabels')
 
 # Get all CSV files in the directory
 csv_files = list(csv_dir.glob('*.csv'))
@@ -55,6 +62,12 @@ pivoted_means = combined_df.pivot(index='model', columns=['dataset', 'metric'], 
 if models_to_ignore:
     pivoted_df = pivoted_df[~pivoted_df.index.isin(models_to_ignore)]
     pivoted_means = pivoted_means[~pivoted_means.index.isin(models_to_ignore)]
+
+# Filter out ignored metrics
+if metrics_to_ignore:
+    cols_to_drop = [col for col in pivoted_df.columns if col[1] in metrics_to_ignore]
+    pivoted_df = pivoted_df.drop(columns=cols_to_drop)
+    pivoted_means = pivoted_means.drop(columns=cols_to_drop)
 
 # Get the order from NAME_MAP
 name_map_order = list(NAME_MAP.keys())
