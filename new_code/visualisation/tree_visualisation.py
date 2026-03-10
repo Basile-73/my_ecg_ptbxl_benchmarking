@@ -27,21 +27,21 @@ from pathlib import Path
 SCRIPT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_DIR.parent.parent
 
-RESULTS_CSV = REPO_ROOT / "mycode/denoising/output/test_ls/downstream_results/exp0/per_class_roc_results_exp0.csv"
+RESULTS_CSV = REPO_ROOT / "mycode/denoising/output/report_strong_ls/downstream_results/exp0/per_class_roc_results_exp0.csv"
 SCP_STATEMENTS = REPO_ROOT / "data/physionet.org/files/ptb-xl/1.0.3/scp_statements.csv"
 Y_TEST_PATH = REPO_ROOT / "new_code/classification/output2/exp0/data/y_test.npy"
 MLB_PATH = REPO_ROOT / "new_code/classification/output2/exp0/data/mlb.pkl"
 
-OUTPUT_DIR = REPO_ROOT / "new_code/visualisation/output/trees"
+OUTPUT_DIR = REPO_ROOT / "new_code/visualisation/output/trees/report_strong"
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 # ──────────────────────────────────────────────────────────────
 # MODEL DEFINITIONS
 # ──────────────────────────────────────────────────────────────
-LEAD_SENSITIVE_MODELS = ["mamba1_3blocks_ls", "drnet_mamba1_3blocks_ls"]
-NON_LS_EQUIVALENTS = {"mamba1_3blocks_ls": "mamba1_3blocks", "drnet_mamba1_3blocks_ls": "drnet_mamba1_3blocks"}
-IMUNET_EQUIVALENTS = {"mamba1_3blocks_ls": "imunet", "drnet_mamba1_3blocks_ls": "drnet_imunet"}
-CLASSIFIERS = ["fastai_xresnet1d101", "fastai_inception1d"]
+LEAD_SENSITIVE_MODELS = ["mamba1_3blocks_ls", "mamba1_3blocks"]
+NON_LS_EQUIVALENTS = {"mamba1_3blocks_ls": "mamba1_3blocks"}
+IMUNET_EQUIVALENTS = {"mamba1_3blocks_ls": "unet", "mamba1_3blocks": "unet"}#"drnet_mamba1_3blocks_ls": "drnet_unet"} # !todo rename symbol
+CLASSIFIERS = ["fastai_resnet1d_wang", "fastai_inception1d"]
 
 # ──────────────────────────────────────────────────────────────
 # COLOUR PALETTE  – one colour per diagnostic_class
@@ -62,6 +62,7 @@ MODEL_DISPLAY_NAMES = {
 CLASSIFIER_DISPLAY_NAMES = {
     "fastai_xresnet1d101": "XResNet1D-101",
     "fastai_inception1d": "Inception1D",
+    "fastai_resnet1d_wang": "ResNet1D-Wang",
 }
 
 
@@ -123,7 +124,7 @@ def get_auc(df, model, classifier, diagnosis):
 # HIERARCHY BUILDING
 # ──────────────────────────────────────────────────────────────
 def build_tree(diag_to_subclass, diag_to_class, subclass_to_class, all_diag_classes,
-               sample_counts, auc_lookup, color_lookup=None):
+               sample_counts, auc_lookup, color_lookup=None, min_samples=0):
     """Build a nested structure for visualisation.
 
     Parameters
@@ -131,6 +132,7 @@ def build_tree(diag_to_subclass, diag_to_class, subclass_to_class, all_diag_clas
     auc_lookup    : callable(diagnosis) -> float   value shown in the label
     color_lookup  : callable(diagnosis) -> float   value used for colouring
                     (optional – defaults to auc_lookup)
+    min_samples   : int   minimum positive test samples to include a diagnosis
 
     Returns
     -------
@@ -144,8 +146,9 @@ def build_tree(diag_to_subclass, diag_to_class, subclass_to_class, all_diag_clas
     has_separate_color = color_lookup is not auc_lookup
 
     # Group diagnoses by subclass, subclasses by class
-    # Only include diagnoses that appear in our AUC data
-    diag_names = [d for d in diag_to_class if not np.isnan(auc_lookup(d))]
+    # Only include diagnoses that appear in our AUC data (and meet min_samples)
+    diag_names = [d for d in diag_to_class
+                  if not np.isnan(auc_lookup(d)) and sample_counts.get(d, 0) >= min_samples]
 
     # Build subclass groups
     subclass_diags = {}  # subclass -> list of diagnosis names
@@ -492,9 +495,11 @@ def main():
     # Only keep diagnostic labels (the 44 that have diagnostic=1.0)
     diagnostic_labels = set(diag_to_class.keys())
 
+    MIN_SAMPLES_PRUNED = 5
+
     for model in LEAD_SENSITIVE_MODELS:
-        non_ls = NON_LS_EQUIVALENTS[model]
-        imunet = IMUNET_EQUIVALENTS[model]
+        non_ls = NON_LS_EQUIVALENTS.get(model)
+        imunet = IMUNET_EQUIVALENTS.get(model)
         model_display = MODEL_DISPLAY_NAMES.get(model, model)
 
         for classifier in CLASSIFIERS:
@@ -508,13 +513,6 @@ def main():
                     return np.nan
                 return get_auc(df, model, classifier, d)
 
-            tree = build_tree(diag_to_subclass, diag_to_class, subclass_to_class,
-                              all_diag_classes, sample_counts, auc_absolute)
-            draw_tree(tree,
-                      f"Absolute AUC - {model_display} / {clf_display}",
-                      OUTPUT_DIR / f"{prefix}__1_absolute_auc.png",
-                      is_delta=False)
-
             # Tree 2: Absolute AUC - Noisy AUC
             def auc_minus_noisy(d):
                 if d not in diagnostic_labels:
@@ -524,13 +522,6 @@ def main():
                 if np.isnan(a) or np.isnan(b):
                     return np.nan
                 return a - b
-
-            tree = build_tree(diag_to_subclass, diag_to_class, subclass_to_class,
-                              all_diag_classes, sample_counts, auc_minus_noisy)
-            draw_tree(tree,
-                      f"AUC Improvement over Noisy - {model_display} / {clf_display}",
-                      OUTPUT_DIR / f"{prefix}__2_vs_noisy.png",
-                      is_delta=True)
 
             # Tree 3: Absolute AUC - Non-lead-sensitive equivalent
             def auc_minus_non_ls(d):
@@ -542,13 +533,6 @@ def main():
                     return np.nan
                 return a - b
 
-            tree = build_tree(diag_to_subclass, diag_to_class, subclass_to_class,
-                              all_diag_classes, sample_counts, auc_minus_non_ls)
-            draw_tree(tree,
-                      f"AUC Improvement over {non_ls} - {model_display} / {clf_display}",
-                      OUTPUT_DIR / f"{prefix}__3_vs_non_ls.png",
-                      is_delta=True)
-
             # Tree 4: Absolute AUC - IMUNet equivalent
             def auc_minus_imunet(d):
                 if d not in diagnostic_labels:
@@ -559,22 +543,40 @@ def main():
                     return np.nan
                 return a - b
 
-            tree = build_tree(diag_to_subclass, diag_to_class, subclass_to_class,
-                              all_diag_classes, sample_counts, auc_minus_imunet)
-            draw_tree(tree,
-                      f"AUC Improvement over {imunet} - {model_display} / {clf_display}",
-                      OUTPUT_DIR / f"{prefix}__4_vs_imunet.png",
-                      is_delta=True)
+            # Define all tree specs: (number, title, path, is_delta, auc_lookup, color_lookup, needs)
+            tree_specs = [
+                ("1", f"Absolute AUC - {model_display} / {clf_display}",
+                 "1_absolute_auc", False, auc_absolute, None, None),
+                ("2", f"AUC Improvement over Noisy - {model_display} / {clf_display}",
+                 "2_vs_noisy", True, auc_minus_noisy, None, None),
+                ("3", f"AUC Improvement over {non_ls} - {model_display} / {clf_display}",
+                 "3_vs_non_ls", True, auc_minus_non_ls, None, non_ls),
+                ("4", f"AUC Improvement over {imunet} - {model_display} / {clf_display}",
+                 "4_vs_imunet", True, auc_minus_imunet, None, imunet),
+                ("5", f"Absolute AUC (coloured by improvement over noisy) - {model_display} / {clf_display}",
+                 "5_absolute_colored_by_noisy", False, auc_absolute, auc_minus_noisy, None),
+            ]
 
-            # Tree 5: Absolute AUC (labels) coloured by improvement over noisy
-            tree = build_tree(diag_to_subclass, diag_to_class, subclass_to_class,
-                              all_diag_classes, sample_counts,
-                              auc_lookup=auc_absolute,
-                              color_lookup=auc_minus_noisy)
-            draw_tree(tree,
-                      f"Absolute AUC (coloured by improvement over noisy) - {model_display} / {clf_display}",
-                      OUTPUT_DIR / f"{prefix}__5_absolute_colored_by_noisy.png",
-                      is_delta=False)
+            for num, title, suffix, is_delta, auc_fn, color_fn, needs in tree_specs:
+                if needs is not None and not needs:
+                    continue
+
+                bt_kwargs = dict(
+                    diag_to_subclass=diag_to_subclass, diag_to_class=diag_to_class,
+                    subclass_to_class=subclass_to_class, all_diag_classes=all_diag_classes,
+                    sample_counts=sample_counts, auc_lookup=auc_fn, color_lookup=color_fn,
+                )
+
+                # Full tree
+                tree = build_tree(**bt_kwargs)
+                draw_tree(tree, title, OUTPUT_DIR / f"{prefix}__{suffix}.png", is_delta=is_delta)
+
+                # Pruned tree (min_samples filter)
+                tree_pruned = build_tree(**bt_kwargs, min_samples=MIN_SAMPLES_PRUNED)
+                draw_tree(tree_pruned,
+                          f"{title} (≥{MIN_SAMPLES_PRUNED} samples)",
+                          OUTPUT_DIR / f"{prefix}__{suffix}_pruned.png",
+                          is_delta=is_delta)
 
     print(f"\nAll trees saved to {OUTPUT_DIR}")
 
