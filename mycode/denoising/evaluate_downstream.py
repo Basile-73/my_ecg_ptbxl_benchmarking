@@ -32,7 +32,7 @@ sys.path.insert(0, os.path.join(script_dir, '../../ecg_noise/source'))
 
 
 from denoising_utils.preprocessing import normalize_signals, bandpass_filter, normalize_robust, denormalize_robust
-from denoising_utils.downstream import roc_by_class, compute_bootstrap_ci
+from denoising_utils.downstream import roc_by_class, compute_bootstrap_ci, calibrate_temperature, plot_reliability_diagram
 from ecg_noise_factory.noise import NoiseFactory
 from utils.utils import load_dataset, apply_standardizer, select_data, compute_label_aggregations
 
@@ -658,6 +658,8 @@ def evaluate_downstream(config_path='code/denoising/configs/denoising_config.yam
 
     results = []
     per_class_results = []
+    temperatures = {}  # Store per-classifier temperature
+    logits_for_calibration = {}  # {clf_name: {condition_name: logits}}
 
     # Baseline: Clean data
     print("\n--- Baseline: Clean Data ---")
@@ -669,14 +671,21 @@ def evaluate_downstream(config_path='code/denoising/configs/denoising_config.yam
         X_val_clean_original_p = apply_standardizer(X_val_12lead_original, scaler)
         y_pred_clean = clf_model.predict(X_val_clean_original_p)
 
+        # Fit temperature scaling on clean predictions (Guo et al., 2017)
+        T = calibrate_temperature(y_pred_clean, y_val)
+        temperatures[clf_name] = T
+        logits_for_calibration[clf_name] = {'clean': y_pred_clean}
+
         auc_point = roc_auc_score(y_val, y_pred_clean, average='macro')
         ci = compute_bootstrap_ci(y_val, y_pred_clean, n_bootstraps=n_bootstraps)
 
-        # Compute BCE (requires unnormalized logits from classifier)
-        # Note: y_pred_clean contains raw model outputs (logits), not probabilities
         bce_loss = nn.BCEWithLogitsLoss()
-        bce_point = bce_loss(torch.FloatTensor(y_pred_clean), torch.FloatTensor(y_val)).item()
-        bce_ci = compute_bootstrap_ci(y_val, y_pred_clean, n_bootstraps=n_bootstraps, metric='bce')
+        bce_point = bce_loss(torch.FloatTensor(y_pred_clean) / T, torch.FloatTensor(y_val)).item()
+        bce_ci = compute_bootstrap_ci(y_val, y_pred_clean, n_bootstraps=n_bootstraps, metric='bce', temperature=T)
+
+        clean_probs = torch.sigmoid(torch.FloatTensor(y_pred_clean) / T).numpy()
+        brier_point = np.mean((clean_probs - y_val) ** 2)
+        brier_ci = compute_bootstrap_ci(y_val, y_pred_clean, n_bootstraps=n_bootstraps, metric='brier', temperature=T)
 
         results.append({
             'denoising_model': 'clean',
@@ -688,7 +697,11 @@ def evaluate_downstream(config_path='code/denoising/configs/denoising_config.yam
             'bce': bce_point,
             'bce_mean': bce_ci['mean'],
             'bce_lower': bce_ci['lower'],
-            'bce_upper': bce_ci['upper']
+            'bce_upper': bce_ci['upper'],
+            'brier': brier_point,
+            'brier_mean': brier_ci['mean'],
+            'brier_lower': brier_ci['lower'],
+            'brier_upper': brier_ci['upper']
         })
 
         if compute_per_class:
@@ -697,6 +710,7 @@ def evaluate_downstream(config_path='code/denoising/configs/denoising_config.yam
 
         print(f"  AUC: {auc_point:.4f} (95% CI: [{ci['lower']:.4f}, {ci['upper']:.4f}])")
         print(f"  BCE: {bce_point:.4f} (95% CI: [{bce_ci['lower']:.4f}, {bce_ci['upper']:.4f}])")
+        print(f"  Brier: {brier_point:.4f} (95% CI: [{brier_ci['lower']:.4f}, {brier_ci['upper']:.4f}])")
 
     # Baseline: Noisy data (no denoising)
     print("\n--- Baseline: Noisy Data (no denoising) ---")
@@ -709,15 +723,19 @@ def evaluate_downstream(config_path='code/denoising/configs/denoising_config.yam
             scaler = pickle.load(f)
         X_val_noisy_denorm = apply_standardizer(X_val_noisy_denorm, scaler)
         y_pred_noisy = clf_model.predict(X_val_noisy_denorm)
+        logits_for_calibration[clf_name]['noisy'] = y_pred_noisy
 
         auc_point = roc_auc_score(y_val, y_pred_noisy, average='macro')
         ci = compute_bootstrap_ci(y_val, y_pred_noisy, n_bootstraps=n_bootstraps)
 
-        # Compute BCE (requires unnormalized logits from classifier)
-        # Note: y_pred_noisy contains raw model outputs (logits), not probabilities
+        T = temperatures[clf_name]
         bce_loss = nn.BCEWithLogitsLoss()
-        bce_point = bce_loss(torch.FloatTensor(y_pred_noisy), torch.FloatTensor(y_val)).item()
-        bce_ci = compute_bootstrap_ci(y_val, y_pred_noisy, n_bootstraps=n_bootstraps, metric='bce')
+        bce_point = bce_loss(torch.FloatTensor(y_pred_noisy) / T, torch.FloatTensor(y_val)).item()
+        bce_ci = compute_bootstrap_ci(y_val, y_pred_noisy, n_bootstraps=n_bootstraps, metric='bce', temperature=T)
+
+        noisy_probs = torch.sigmoid(torch.FloatTensor(y_pred_noisy) / T).numpy()
+        brier_point = np.mean((noisy_probs - y_val) ** 2)
+        brier_ci = compute_bootstrap_ci(y_val, y_pred_noisy, n_bootstraps=n_bootstraps, metric='brier', temperature=T)
 
         results.append({
             'denoising_model': 'noisy',
@@ -729,7 +747,11 @@ def evaluate_downstream(config_path='code/denoising/configs/denoising_config.yam
             'bce': bce_point,
             'bce_mean': bce_ci['mean'],
             'bce_lower': bce_ci['lower'],
-            'bce_upper': bce_ci['upper']
+            'bce_upper': bce_ci['upper'],
+            'brier': brier_point,
+            'brier_mean': brier_ci['mean'],
+            'brier_lower': brier_ci['lower'],
+            'brier_upper': brier_ci['upper']
         })
         if compute_per_class:
             per_class_roc = roc_by_class(y_val, y_pred_noisy, mlb, n_bootstraps=n_bootstraps, densoising_model_name='noisy', classifyer_name=clf_name)
@@ -737,6 +759,7 @@ def evaluate_downstream(config_path='code/denoising/configs/denoising_config.yam
 
         print(f"  AUC: {auc_point:.4f} (95% CI: [{ci['lower']:.4f}, {ci['upper']:.4f}])")
         print(f"  BCE: {bce_point:.4f} (95% CI: [{bce_ci['lower']:.4f}, {bce_ci['upper']:.4f}])")
+        print(f"  Brier: {brier_point:.4f} (95% CI: [{brier_ci['lower']:.4f}, {brier_ci['upper']:.4f}])")
 
     # Denoised data
     print("\n--- Denoised Data ---")
@@ -770,15 +793,19 @@ def evaluate_downstream(config_path='code/denoising/configs/denoising_config.yam
         for clf_name, clf_model in classification_models.items():
             print(f"  Classifying with {clf_name}...")
             y_pred_denoised = clf_model.predict(X_val_denoised)
+            logits_for_calibration[clf_name][denoise_name] = y_pred_denoised
 
             auc_point = roc_auc_score(y_val, y_pred_denoised, average='macro')
             ci = compute_bootstrap_ci(y_val, y_pred_denoised, n_bootstraps=n_bootstraps)
 
-            # Compute BCE (requires unnormalized logits from classifier)
-            # Note: y_pred_denoised contains raw model outputs (logits), not probabilities
+            T = temperatures[clf_name]
             bce_loss = nn.BCEWithLogitsLoss()
-            bce_point = bce_loss(torch.FloatTensor(y_pred_denoised), torch.FloatTensor(y_val)).item()
-            bce_ci = compute_bootstrap_ci(y_val, y_pred_denoised, n_bootstraps=n_bootstraps, metric='bce')
+            bce_point = bce_loss(torch.FloatTensor(y_pred_denoised) / T, torch.FloatTensor(y_val)).item()
+            bce_ci = compute_bootstrap_ci(y_val, y_pred_denoised, n_bootstraps=n_bootstraps, metric='bce', temperature=T)
+
+            denoised_probs = torch.sigmoid(torch.FloatTensor(y_pred_denoised) / T).numpy()
+            brier_point = np.mean((denoised_probs - y_val) ** 2)
+            brier_ci = compute_bootstrap_ci(y_val, y_pred_denoised, n_bootstraps=n_bootstraps, metric='brier', temperature=T)
 
             results.append({
                 'denoising_model': denoise_name,
@@ -790,7 +817,11 @@ def evaluate_downstream(config_path='code/denoising/configs/denoising_config.yam
                 'bce': bce_point,
                 'bce_mean': bce_ci['mean'],
                 'bce_lower': bce_ci['lower'],
-                'bce_upper': bce_ci['upper']
+                'bce_upper': bce_ci['upper'],
+                'brier': brier_point,
+                'brier_mean': brier_ci['mean'],
+                'brier_lower': brier_ci['lower'],
+                'brier_upper': brier_ci['upper']
             })
 
             if compute_per_class:
@@ -799,6 +830,7 @@ def evaluate_downstream(config_path='code/denoising/configs/denoising_config.yam
 
             print(f"    AUC: {auc_point:.4f} (95% CI: [{ci['lower']:.4f}, {ci['upper']:.4f}])")
             print(f"    BCE: {bce_point:.4f} (95% CI: [{bce_ci['lower']:.4f}, {bce_ci['upper']:.4f}])")
+            print(f"    Brier: {brier_point:.4f} (95% CI: [{brier_ci['lower']:.4f}, {brier_ci['upper']:.4f}])")
 
     # ========================================================================
     # Save and visualize results
@@ -823,6 +855,19 @@ def evaluate_downstream(config_path='code/denoising/configs/denoising_config.yam
     # Create visualizations
     plot_downstream_results(results_df, results_folder)
 
+    # Create reliability diagrams for calibration assessment
+    print("\n" + "-"*80)
+    print("Calibration Reliability Diagrams")
+    print("-"*80)
+    for clf_name in logits_for_calibration:
+        plot_reliability_diagram(
+            logits_for_calibration[clf_name],
+            y_val,
+            temperatures[clf_name],
+            results_folder,
+            clf_name
+        )
+
     # Save per-class results
     if compute_per_class:
         per_classdf = pd.DataFrame(per_class_results)
@@ -845,12 +890,16 @@ def plot_downstream_results(results_df, output_folder):
     # Generate BCE plots
     plot_metric_bars(results_df, output_folder, metric='bce')
 
+    # Generate Brier score plots
+    plot_metric_bars(results_df, output_folder, metric='brier')
+
     # Generate combined AUC+BCE plots
     plot_metric_bars_combined(results_df, output_folder)
 
     # Create improvement heatmaps
     create_improvement_heatmap(results_df, output_folder, metric='auc')
     create_improvement_heatmap(results_df, output_folder, metric='bce')
+    create_improvement_heatmap(results_df, output_folder, metric='brier')
 
 
 def plot_metric_bars(results_df, output_folder, metric='auc'):
@@ -874,9 +923,14 @@ def plot_metric_bars(results_df, output_folder, metric='auc'):
 
     classifiers = results_df['classification_model'].unique()
 
-    # Determine if lower is better (BCE) or higher is better (AUC)
-    lower_is_better = (metric == 'bce')
-    metric_label = 'BCE (Binary Cross Entropy)' if metric == 'bce' else 'AUC (macro)'
+    # Determine if lower is better (BCE, Brier) or higher is better (AUC)
+    lower_is_better = metric in ('bce', 'brier')
+    metric_labels = {
+        'auc': 'AUC (macro)',
+        'bce': 'BCE (Binary Cross Entropy)',
+        'brier': 'Brier Score'
+    }
+    metric_label = metric_labels.get(metric, metric)
 
     # Create one figure per classifier
     for clf_name in classifiers:
@@ -1291,14 +1345,14 @@ def create_improvement_heatmap(results_df, output_folder, metric='auc'):
     Args:
         results_df: DataFrame with evaluation results
         output_folder: Path to save plots
-        metric: 'auc' or 'bce'
+        metric: 'auc', 'bce', or 'brier'
     """
     fig, ax = plt.subplots(figsize=(12, 8))
 
     classifiers = sorted(results_df['classification_model'].unique())
 
-    # For BCE, lower is better, so improvement is negative (reduction)
-    lower_is_better = (metric == 'bce')
+    # For BCE/Brier, lower is better, so improvement is reduction
+    lower_is_better = metric in ('bce', 'brier')
     metric_label = 'BCE' if metric == 'bce' else 'AUC'
 
     # Get noisy baseline for each classifier

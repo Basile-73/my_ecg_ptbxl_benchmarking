@@ -2,6 +2,8 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 
+from maps import COLOR_MAP, NAME_MAP, OUR_MODELS
+
 
 def plot_noise_study(csv_path="outputs/noise_study_results.csv", output_folder='outputs/noise_study',
                      metric='SNR', plausible_range=None):
@@ -100,10 +102,14 @@ def plot_noise_study(csv_path="outputs/noise_study_results.csv", output_folder='
 
         for model in noise_data['model_name'].unique():
             model_data = noise_data[noise_data['model_name'] == model].sort_values(x_col)
+            display_name = NAME_MAP.get(model, model)
+            if model in OUR_MODELS:
+                display_name += ' (ours)'
+            color = COLOR_MAP.get(model, None)
             ax.plot(model_data[x_col], model_data['mean'],
-                    marker='o', label=model, linewidth=2)
+                    marker='o', label=display_name, linewidth=2, color=color)
             ax.fill_between(model_data[x_col],
-                            model_data['ci_low'], model_data['ci_high'], alpha=0.2)
+                            model_data['ci_low'], model_data['ci_high'], alpha=0.2, color=color)
 
         ax.set_xlabel(x_label)
         ax.set_ylabel(y_label)
@@ -118,7 +124,7 @@ def plot_noise_study(csv_path="outputs/noise_study_results.csv", output_folder='
         ax.legend()
         fig.tight_layout()
 
-        fig.savefig(f'{output_folder}/{noise_type}_noise_study.png', dpi=300, bbox_inches='tight')
+        fig.savefig(f'{output_folder}/{noise_type}_noise_study.png', dpi=300, bbox_inches='tight', transparent=True)
         plt.close(fig)
 
         # Reset font sizes to original for combined plot
@@ -151,10 +157,14 @@ def plot_noise_study(csv_path="outputs/noise_study_results.csv", output_folder='
 
         for model in noise_data['model_name'].unique():
             model_data = noise_data[noise_data['model_name'] == model].sort_values(x_col)
+            display_name = NAME_MAP.get(model, model)
+            if model in OUR_MODELS:
+                display_name += ' (ours)'
+            color = COLOR_MAP.get(model, None)
             ax.plot(model_data[x_col], model_data['mean'],
-                    marker='o', label=model, linewidth=2)
+                    marker='o', label=display_name, linewidth=2, color=color)
             ax.fill_between(model_data[x_col],
-                            model_data['ci_low'], model_data['ci_high'], alpha=0.2)
+                            model_data['ci_low'], model_data['ci_high'], alpha=0.2, color=color)
 
         ax.set_xlabel(x_label)
         ax.set_ylabel(y_label)
@@ -176,18 +186,18 @@ def plot_noise_study(csv_path="outputs/noise_study_results.csv", output_folder='
     plt.tight_layout()
     plt.subplots_adjust(bottom=0.3)
 
-    fig.savefig(f'{output_folder}/noise_study_results_combined.png', dpi=300, bbox_inches='tight')
+    fig.savefig(f'{output_folder}/noise_study_results_combined.png', dpi=300, bbox_inches='tight', transparent=True)
     plt.show()
 
 
 if __name__ == "__main__":
     import yaml
 
-    results_file = 'outputs/noise_study_results_high_range2.csv'
-    output_folder = 'outputs/noise_study/high_range2'
+    results_file = 'outputs/noise_study_results_non_smooth_experiment_stage2.csv'
+    output_folder = 'outputs/noise_study/noise_study_results_non_smooth_experiment_stage2'
 
     # Optionally load plausible_range from the study config (backward compat: no-op if key absent)
-    config_name = 'high_range2'
+    config_name = 'non_smooth_experiment'
     _cfg = yaml.safe_load(open(f'experiments/noise_study/{config_name}.yaml'))
     _plausible_range = _cfg['noise'].get('plausible_range', None)
 
