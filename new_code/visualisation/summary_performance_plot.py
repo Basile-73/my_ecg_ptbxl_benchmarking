@@ -7,7 +7,7 @@ from maps import COLOR_MAP, NAME_MAP, plot_font_sizes
 
 choice = 'ptb-xl' # 'european', 'sinus', 'ptb-xl', 'synthetic'
 legend = False
-save_figure = False
+save_figure = True
 save_table = True
 
 
@@ -54,7 +54,7 @@ models = [
 ]
 
 datasets = {
-    'european': 'reproduce_eu_smooth_report/european_st_t',
+    'european': 'reproduce_eu_report/european_st_t',
     'sinus': 'all_models_sinus/mitbih_sinus/14400',
     'ptb-xl': 'reproduce_ptbxl_report/ptb_xl',
     'synthetic': 'reproduce_syn/synthetic'
