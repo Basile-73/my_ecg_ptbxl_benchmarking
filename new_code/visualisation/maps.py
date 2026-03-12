@@ -68,6 +68,9 @@ COLOR_MAP = {
     'mamba1_3blocks_ptb_l10': '#8ecae6',
     'mamba1_3blocks_ptb_l11': '#8ecae6',
     'mamba1_3blocks_ptb_all': '#8ecae6',
+
+    'mamba1_3blocks_3_compression': '#e76f51',    # coral/orange-red
+    'mamba1_3blocks_3_no_compression': '#264653',  # dark teal
 }
 
 NAME_MAP = {
@@ -101,6 +104,9 @@ NAME_MAP = {
     'drnet_mamba2_3blocks_lead_1': 'DRNET Mamba2-3B (Lead 1)',
     'mamba1_3blocks_ls': 'UNet Mamba1-3B (Lead aware)',      # light blue
     'drnet_mamba1_3blocks_ls': 'DRNET Mamba1-3B (Lead aware)',
+
+    'mamba1_3blocks_3_compression': 'UNet Mamba1-3B (Compression)',
+    'mamba1_3blocks_3_no_compression': 'UNet Mamba1-3B (No Compression)',
 }
 
 OUR_MODELS = [
@@ -108,6 +114,8 @@ OUR_MODELS = [
     'drnet_mamba1_3blocks',
     'mamba2_3blocks',
     'drnet_mamba2_3blocks',
+    'mamba1_3blocks_ls',
+    'drnet_mamba1_3blocks_ls',
 ]
 
 EXCLUDE_MODELS = [

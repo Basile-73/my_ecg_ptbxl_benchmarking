@@ -1,8 +1,18 @@
 import pandas as pd
 from pathlib import Path
+import matplotlib.font_manager as fm
 import matplotlib.pyplot as plt
 
 from maps import COLOR_MAP, NAME_MAP, plot_font_sizes
+
+# Register CMU Serif font
+_FONT_DIR = Path(__file__).resolve().parent.parent.parent / "fonts" / "cm-unicode-0.7.0"
+for _ttf in _FONT_DIR.glob("*.ttf"):
+    fm.fontManager.addfont(str(_ttf))
+plt.rcParams["font.family"] = "CMU Serif"
+
+# Scale all font sizes by 1.2
+font_sizes = {k: v * 1.44 for k, v in plot_font_sizes.items()}
 
 save_figure = True
 
@@ -57,12 +67,12 @@ for dataset_label, prefix in datasets:
                     linewidth=1.5,
                 )
 
-            ax.set_title(title, fontsize=plot_font_sizes['title'], fontweight='bold')
-            ax.set_xlabel('Step', fontsize=plot_font_sizes['axis_labels'])
-            ax.set_ylabel(y_label, fontsize=plot_font_sizes['axis_labels'])
-            ax.tick_params(axis='both', labelsize=plot_font_sizes['ticks'])
+            ax.set_title(title, fontsize=font_sizes['title'], fontweight='bold')
+            ax.set_xlabel('Step', fontsize=font_sizes['axis_labels'])
+            ax.set_ylabel(y_label, fontsize=font_sizes['axis_labels'])
+            ax.tick_params(axis='both', labelsize=font_sizes['ticks'])
             ax.grid(True, alpha=0.3)
-            ax.legend(fontsize=plot_font_sizes['legend'])
+            ax.legend(fontsize=font_sizes['legend'])
 
         plt.tight_layout()
 
@@ -74,3 +84,39 @@ for dataset_label, prefix in datasets:
             print(f"Figure saved to {save_path}")
 
         plt.show()
+
+# --- Compression comparison plot ---
+compression_csv = Path('../outputs/training_data/compression.csv')
+df_comp = pd.read_csv(compression_csv)
+
+metric_cols = [
+    c for c in df_comp.columns
+    if c != 'Step' and '__MIN' not in c and '__MAX' not in c
+]
+
+fig, ax = plt.subplots(figsize=(8, 5))
+for col in metric_cols:
+    model = get_model_name(col)
+    ax.plot(
+        df_comp['Step'],
+        df_comp[col],
+        label=NAME_MAP.get(model, model),
+        color=COLOR_MAP.get(model, '#C9C9C9'),
+        linewidth=1.5,
+    )
+
+ax.set_title('Compression vs No Compression', fontsize=font_sizes['title'], fontweight='bold')
+ax.set_xlabel('Step', fontsize=font_sizes['axis_labels'])
+ax.set_ylabel('Test RMSE', fontsize=font_sizes['axis_labels'])
+ax.tick_params(axis='both', labelsize=font_sizes['ticks'])
+ax.grid(True, alpha=0.3)
+ax.legend(fontsize=font_sizes['legend'])
+plt.tight_layout()
+
+if save_figure:
+    save_path = Path('../outputs/plots/compression_rmse.png')
+    save_path.parent.mkdir(parents=True, exist_ok=True)
+    plt.savefig(save_path, dpi=300, bbox_inches='tight')
+    print(f"Figure saved to {save_path}")
+
+plt.show()
