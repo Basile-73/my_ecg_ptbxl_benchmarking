@@ -1,8 +1,16 @@
 import pandas as pd
 import matplotlib.pyplot as plt
+import matplotlib.font_manager as fm
 import matplotlib.patches as mpatches
+from pathlib import Path
 
 from maps import COLOR_MAP, NAME_MAP, OUR_MODELS
+
+# Register CMU Serif font
+_FONT_DIR = Path(__file__).resolve().parent.parent.parent / "fonts" / "cm-unicode-0.7.0"
+for _ttf in _FONT_DIR.glob("*.ttf"):
+    fm.fontManager.addfont(str(_ttf))
+plt.rcParams["font.family"] = "CMU Serif"
 
 
 def plot_noise_study(csv_path="outputs/noise_study_results.csv", output_folder='outputs/noise_study',
@@ -19,14 +27,14 @@ def plot_noise_study(csv_path="outputs/noise_study_results.csv", output_folder='
             using the independence formula (SNR_comb = 1/sum(1/SNR_i)).
             If None, no shading is applied (backward compatible).
     """
-    # Configure font sizes (increased by factor of 2)
+    # Configure font sizes
     plt.rcParams.update({
-        'font.size': 24,           # default text size
-        'axes.titlesize': 28,      # title size
-        'axes.labelsize': 26,      # x and y labels
-        'xtick.labelsize': 22,     # x tick labels
-        'ytick.labelsize': 22,     # y tick labels
-        'legend.fontsize': 24,     # legend
+        'font.size': 29.16,        # default text size
+        'axes.titlesize': 34.02,   # title size
+        'axes.labelsize': 31.59,   # x and y labels
+        'xtick.labelsize': 26.73,  # x tick labels
+        'ytick.labelsize': 26.73,  # y tick labels
+        'legend.fontsize': 29.16,  # legend
     })
 
     df = pd.read_csv(csv_path)
@@ -81,14 +89,14 @@ def plot_noise_study(csv_path="outputs/noise_study_results.csv", output_folder='
     # --------------------------------------------------------- individual plots
 
     for noise_type in noise_types:
-        # Set reduced font sizes for individual plots
+        # Set font sizes for individual plots
         plt.rcParams.update({
-            'font.size': 12,
-            'axes.titlesize': 14,
-            'axes.labelsize': 13,
-            'xtick.labelsize': 11,
-            'ytick.labelsize': 11,
-            'legend.fontsize': 12,
+            'font.size': 32.08,
+            'axes.titlesize': 37.42,
+            'axes.labelsize': 34.75,
+            'xtick.labelsize': 29.4,
+            'ytick.labelsize': 29.4,
+            'legend.fontsize': 32.08,
         })
 
         fig, ax = plt.subplots(figsize=(8, 6))
@@ -113,7 +121,11 @@ def plot_noise_study(csv_path="outputs/noise_study_results.csv", output_folder='
 
         ax.set_xlabel(x_label)
         ax.set_ylabel(y_label)
-        ax.set_title(f'{noise_type.upper()} Noise')
+        # "E." prefix for the combined noise type individual plot
+        if noise_type == 'combined':
+            ax.set_title(f'E. {noise_type.upper()} Noise')
+        else:
+            ax.set_title(f'{noise_type.upper()} Noise')
 
         ax.invert_xaxis()  # high SNR (clean) on left, low SNR (noisy) on right
         if not use_snr_value:
@@ -121,31 +133,32 @@ def plot_noise_study(csv_path="outputs/noise_study_results.csv", output_folder='
             ax.set_xticklabels(['low', 'high'])  # low noise on left, high noise on right
 
         ax.grid(True, alpha=0.3)
-        ax.legend()
         fig.tight_layout()
 
         fig.savefig(f'{output_folder}/{noise_type}_noise_study.png', dpi=300, bbox_inches='tight', transparent=True)
         plt.close(fig)
 
-        # Reset font sizes to original for combined plot
+        # Reset font sizes for combined plot
         plt.rcParams.update({
-            'font.size': 24,
-            'axes.titlesize': 28,
-            'axes.labelsize': 26,
-            'xtick.labelsize': 22,
-            'ytick.labelsize': 22,
-            'legend.fontsize': 24,
+            'font.size': 29.16,
+            'axes.titlesize': 34.02,
+            'axes.labelsize': 31.59,
+            'xtick.labelsize': 26.73,
+            'ytick.labelsize': 26.73,
+            'legend.fontsize': 29.16,
         })
 
     # ------------------------------------------------------------ combined plot
+    # Exclude 'combined' noise type from the combined subplot
+    plot_noise_types = [nt for nt in noise_types if nt != 'combined']
 
-    fig, axes = plt.subplots(1, len(noise_types), figsize=(5 * len(noise_types), 6), sharey=True)
-    if len(noise_types) == 1:
+    fig, axes = plt.subplots(1, len(plot_noise_types), figsize=(5 * len(plot_noise_types), 6), sharey=True,
+                             gridspec_kw={'wspace': 0.08})
+    if len(plot_noise_types) == 1:
         axes = [axes]
 
-    handles, labels = None, None
-
-    for i, noise_type in enumerate(noise_types):
+    _subplot_letters = 'ABCDEFGHIJ'
+    for i, noise_type in enumerate(plot_noise_types):
         ax = axes[i]
         noise_data = data[data['noise_type'] == noise_type]
         x_vals = sorted(noise_data[x_col].unique())
@@ -167,27 +180,33 @@ def plot_noise_study(csv_path="outputs/noise_study_results.csv", output_folder='
                             model_data['ci_low'], model_data['ci_high'], alpha=0.2, color=color)
 
         ax.set_xlabel(x_label)
-        ax.set_ylabel(y_label)
-        ax.set_title(f'{noise_type.upper()} Noise')
+        if i == 0:
+            ax.set_ylabel(y_label)
+        else:
+            ax.set_ylabel('')
+        letter = _subplot_letters[i]
+        ax.set_title(f'{letter}. {noise_type.upper()} Noise')
 
         ax.invert_xaxis()  # high SNR (clean) on left, low SNR (noisy) on right
         if not use_snr_value:
             ax.set_xticks([min(x_vals), max(x_vals)])
             ax.set_xticklabels(['low', 'high'])  # low noise on left, high noise on right
 
+
         ax.grid(True, alpha=0.3)
 
-        if i == 0:
-            handles, labels = ax.get_legend_handles_labels()
-
-    # Add centered legend box at bottom
-    fig.legend(handles, labels, loc='lower center', bbox_to_anchor=(0.5, -0.0),
-               frameon=True, fancybox=True, shadow=True, ncol=len(labels))
-    plt.tight_layout()
-    plt.subplots_adjust(bottom=0.3)
+    # Grab handles/labels for the standalone legend
+    handles, labels = axes[0].get_legend_handles_labels()
 
     fig.savefig(f'{output_folder}/noise_study_results_combined.png', dpi=300, bbox_inches='tight', transparent=True)
     plt.show()
+
+    # --------------------------------------------------------- standalone legend
+    fig_leg = plt.figure(figsize=(5 * len(plot_noise_types), 1))
+    fig_leg.legend(handles, labels, loc='center', ncol=len(labels),
+                   frameon=True, fancybox=True, shadow=True)
+    fig_leg.savefig(f'{output_folder}/legend.png', dpi=300, bbox_inches='tight', transparent=True)
+    plt.close(fig_leg)
 
 
 if __name__ == "__main__":

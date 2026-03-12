@@ -18,8 +18,15 @@ import pandas as pd
 import pickle
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
+import matplotlib.font_manager as fm
 from matplotlib.colors import Normalize
 from pathlib import Path
+
+# Register CMU Serif font
+_FONT_DIR = Path(__file__).resolve().parent.parent.parent / "fonts" / "cm-unicode-0.7.0"
+for _ttf in _FONT_DIR.glob("*.ttf"):
+    fm.fontManager.addfont(str(_ttf))
+plt.rcParams["font.family"] = "CMU Serif"
 
 # ──────────────────────────────────────────────────────────────
 # PATHS  (edit as needed)
@@ -34,6 +41,8 @@ MLB_PATH = REPO_ROOT / "new_code/classification/output2/exp0/data/mlb.pkl"
 
 OUTPUT_DIR = REPO_ROOT / "new_code/visualisation/output/trees/report_strong"
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+OMIT_TITLE = True
 
 # ──────────────────────────────────────────────────────────────
 # MODEL DEFINITIONS
@@ -372,7 +381,8 @@ def draw_tree(tree, title, save_path, is_delta=False):
     ax.set_xlim(0, 1)
     ax.set_ylim(0, 1)
     ax.axis("off")
-    ax.set_title(title, fontsize=28, fontweight="bold", pad=20)
+    if not OMIT_TITLE:
+        ax.set_title(title, fontsize=28, fontweight="bold", pad=20)
 
     # Layout: assign y positions bottom-up for leaves, then propagate to parents
     y_step = (1 - 2 * Y_MARGIN) / max(n_leaves - 1, 1)
@@ -410,7 +420,7 @@ def draw_tree(tree, title, save_path, is_delta=False):
             sc_x = LEVEL_X[1]
             sc_y = node_positions[("subclass", sc["name"])]
             # Line: class -> subclass
-            ax.plot([dc_x, sc_x], [dc_y, sc_y], color="#cccccc", linewidth=0.8, zorder=1)
+            ax.plot([dc_x, sc_x], [dc_y, sc_y], color="#cccccc", linewidth=1.6, zorder=1)
 
             for d in sc["children"]:
                 d_x = LEVEL_X[2]
@@ -419,7 +429,7 @@ def draw_tree(tree, title, save_path, is_delta=False):
                 is_redundant = len(sc["children"]) == 1 and d["name"] == sc["name"]
                 node_alpha = 0.0 if is_redundant else 1.0
                 # Line: subclass -> diag
-                ax.plot([sc_x, d_x], [sc_y, d_y], color="#cccccc", linewidth=0.8, zorder=1, alpha=node_alpha)
+                ax.plot([sc_x, d_x], [sc_y, d_y], color="#cccccc", linewidth=1.6, zorder=1, alpha=node_alpha)
 
                 # Draw diagnosis node (scatter = always round)
                 fill = _get_node_color(d["color"], _node_color_value(d), color_is_delta, vmin, vmax)

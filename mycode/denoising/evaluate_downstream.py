@@ -19,7 +19,31 @@ import torch
 import torch.nn as nn
 from scipy import signal as scipy_signal
 import matplotlib.pyplot as plt
+import matplotlib.font_manager as fm
 import seaborn as sns
+
+# Register CMU Serif font
+from pathlib import Path as _Path
+def _find_repo_root():
+    """Find repo root by searching upward from __file__ or cwd for fonts/."""
+    candidates = []
+    try:
+        candidates.append(_Path(__file__).resolve().parent)
+    except (NameError, OSError):
+        pass
+    candidates.append(_Path.cwd())
+    for start in candidates:
+        p = start
+        while p != p.parent:
+            if (p / "fonts" / "cm-unicode-0.7.0").is_dir():
+                return p
+            p = p.parent
+    return _Path.cwd()
+_REPO_ROOT = _find_repo_root()
+_FONT_DIR = _REPO_ROOT / "fonts" / "cm-unicode-0.7.0"
+for _ttf in _FONT_DIR.glob("*.ttf"):
+    fm.fontManager.addfont(str(_ttf))
+plt.rcParams["font.family"] = "CMU Serif"
 from sklearn.metrics import roc_auc_score
 from tqdm import tqdm
 import pickle
@@ -914,12 +938,13 @@ def plot_metric_bars(results_df, output_folder, metric='auc'):
     """
     # Comprehensive color map for consistent styling across all plots
     color_map = COLOR_MAP
-    font_scale = 1.2
+    font_scale = 1.8
     scaled_font_sizes = {
         key: plot_font_sizes[key] * font_scale for key in plot_font_sizes
     }
 
     sns.set_style("whitegrid")
+    plt.rcParams["font.family"] = "CMU Serif"
 
     classifiers = results_df['classification_model'].unique()
 
@@ -1139,7 +1164,12 @@ def plot_metric_bars_combined(results_df, output_folder):
         output_folder: Path to save plots
     """
     color_map = COLOR_MAP
+    font_scale = 1.8
+    scaled_font_sizes = {
+        key: plot_font_sizes[key] * font_scale for key in plot_font_sizes
+    }
     sns.set_style("whitegrid")
+    plt.rcParams["font.family"] = "CMU Serif"
 
     classifiers = results_df['classification_model'].unique()
 
@@ -1226,13 +1256,13 @@ def plot_metric_bars_combined(results_df, output_folder):
 
         ax1.set_yticks([])
         ax1.set_ylim([y_min, y_max])
-        ax1.set_xlabel('AUC (macro)', fontsize=plot_font_sizes['axis_labels'], fontweight='bold')
+        ax1.set_xlabel('AUC (macro)', fontsize=scaled_font_sizes['axis_labels'], fontweight='bold')
         ax1.grid(True, alpha=0.3, axis='x')
 
         # Add value labels for AUC
         for i, (value, lower, upper) in enumerate(zip(auc_values, auc_lowers, auc_uppers)):
             ax1.text(upper + 0.001, i, f'{value:.4f}',
-                   ha='left', va='center', fontsize=plot_font_sizes['value_labels'], fontweight='bold',
+                   ha='left', va='center', fontsize=scaled_font_sizes['value_labels'], fontweight='bold',
                    bbox=dict(boxstyle='round,pad=0.3', facecolor='white',
                             edgecolor='none', alpha=0.7))
 
@@ -1283,13 +1313,13 @@ def plot_metric_bars_combined(results_df, output_folder):
                 linewidth=1, capsize=4)
 
         ax2.set_ylim([y_min, y_max])
-        ax2.set_xlabel('BCE (Binary Cross Entropy)', fontsize=plot_font_sizes['axis_labels'], fontweight='bold')
+        ax2.set_xlabel('BCE (Binary Cross Entropy)', fontsize=scaled_font_sizes['axis_labels'], fontweight='bold')
         ax2.grid(True, alpha=0.3, axis='x')
 
         # Add value labels for BCE (on the right of upper bound)
         for i, (value, lower, upper) in enumerate(zip(bce_values, bce_lowers, bce_uppers)):
             ax2.text(upper + 0.001, i, f'{value:.4f}',
-                   ha='left', va='center', fontsize=plot_font_sizes['value_labels'], fontweight='bold',
+                   ha='left', va='center', fontsize=scaled_font_sizes['value_labels'], fontweight='bold',
                    bbox=dict(boxstyle='round,pad=0.3', facecolor='white',
                             edgecolor='none', alpha=0.7))
 
@@ -1321,7 +1351,7 @@ def plot_metric_bars_combined(results_df, output_folder):
                   loc='lower center',
                   bbox_to_anchor=(0.5, -0.5),
                   ncol=min(3, len(legend_handles)),
-                  fontsize=plot_font_sizes['ticks'],
+                  fontsize=scaled_font_sizes['ticks'],
                   frameon=True,
                   edgecolor='black',
                   fancybox=False)
@@ -1404,8 +1434,8 @@ def create_improvement_heatmap(results_df, output_folder, metric='auc'):
         # Set ticks
         ax.set_xticks(np.arange(len(classifiers)))
         ax.set_yticks(np.arange(len(denoise_models)))
-        ax.set_xticklabels(classifiers, fontsize=10)
-        ax.set_yticklabels(denoise_models, fontsize=9)
+        ax.set_xticklabels(classifiers, fontsize=18)
+        ax.set_yticklabels(denoise_models, fontsize=16.2)
 
         # Rotate x labels
         plt.setp(ax.get_xticklabels(), rotation=45, ha="right", rotation_mode="anchor")
@@ -1415,19 +1445,19 @@ def create_improvement_heatmap(results_df, output_folder, metric='auc'):
             for j in range(len(classifiers)):
                 text = ax.text(j, i, f'{improvements[i, j]:.4f}',
                              ha="center", va="center", color="black",
-                             fontsize=9, fontweight='bold')
+                             fontsize=16.2, fontweight='bold')
 
         # Add colorbar
         cbar = plt.colorbar(im, ax=ax)
         if lower_is_better:
-            cbar.set_label(f'{metric_label} Reduction from Noisy Baseline', fontsize=11, fontweight='bold')
+            cbar.set_label(f'{metric_label} Reduction from Noisy Baseline', fontsize=19.8, fontweight='bold')
         else:
-            cbar.set_label(f'{metric_label} Improvement over Noisy Baseline', fontsize=11, fontweight='bold')
+            cbar.set_label(f'{metric_label} Improvement over Noisy Baseline', fontsize=19.8, fontweight='bold')
 
         ax.set_title(f'Denoising Impact on Classification Performance ({metric_label})',
-                    fontsize=13, fontweight='bold', pad=15)
-        ax.set_xlabel('Classification Model', fontsize=11, fontweight='bold')
-        ax.set_ylabel('Denoising Model', fontsize=11, fontweight='bold')
+                    fontsize=23.4, fontweight='bold', pad=15)
+        ax.set_xlabel('Classification Model', fontsize=19.8, fontweight='bold')
+        ax.set_ylabel('Denoising Model', fontsize=19.8, fontweight='bold')
 
         plt.tight_layout()
 
@@ -1438,8 +1468,8 @@ def create_improvement_heatmap(results_df, output_folder, metric='auc'):
 
         print(f"✓ {metric_label} heatmap saved to: {plot_path}")
 
-# results_df = pd.read_csv('/local/home/bamorel/my_ecg_ptbxl_benchmarking/mycode/denoising/output/mamba_all_leads/downstream_results/exp0/downstream_classification_results.csv')
-# output_folder = '/local/home/bamorel/my_ecg_ptbxl_benchmarking/mycode/denoising/output/mamba_all_leads/downstream_results/exp0'
+# results_df = pd.read_csv('/local/home/bamorel/my_ecg_ptbxl_benchmarking/mycode/denoising/output/report_strong_ls/downstream_results/exp0/downstream_classification_results.csv')
+# output_folder = '/local/home/bamorel/my_ecg_ptbxl_benchmarking/mycode/denoising/output/report_strong_ls/downstream_results/exp0'
 # plot_downstream_results(results_df, output_folder)
 
 
