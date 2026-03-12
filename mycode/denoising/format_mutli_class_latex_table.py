@@ -8,7 +8,7 @@ from new_code.utils.getters import get_model
 from new_code.visualisation.maps import COLOR_MAP, OUR_MODELS, NAME_MAP, EXCLUDE_MODELS, CLASSIFICATION_MODEL_NAMES, CLASSIFICATION_MODEL_NAMES, plot_font_sizes
 
 classifier = 'fastai_inception1d'
-df = pd.read_csv('output/all_100_nbp_strong/downstream_results/exp1.1.1/per_class_roc_results.csv')
+df = pd.read_csv('output/report_strong_ls/downstream_results/exp1.1.1/per_class_roc_results_exp1.1.1.csv')
 df_raw = df
 df = df[df['classifier']==classifier]
 
@@ -26,7 +26,9 @@ def format_ci(row):
     lower = row['lower']
     upper = row['upper']
     ci = max(abs(upper - mean), abs(mean - lower))
-    return f"{mean:.3f} (+/- {ci:.3f})"
+    mean_str = f"{mean:.3f}".lstrip("0")
+    ci_str = f"{ci:.2f}".lstrip("0")
+    return f"{mean_str} $\\pm$ {ci_str}"
 
 df['roc_auc_ci'] = df.apply(format_ci, axis=1)
 
@@ -85,6 +87,7 @@ original_names = final_df.index.tolist()
 # Rename models using NAME_MAP and add (ours) suffix
 def rename_model(original_name):
     mapped_name = NAME_MAP.get(original_name, original_name)
+    mapped_name = mapped_name.replace("Lead aware", "L. a.")
     if original_name in OUR_MODELS:
         return f"{mapped_name} (ours)"
     return mapped_name
@@ -118,7 +121,8 @@ ordered_models = [x[0] for x in our_models_sorted] + [x[0] for x in other_models
 final_df = final_df.reindex(ordered_models)
 
 # Generate LaTeX table and insert dashed line
-latex_table = final_df.to_latex(escape=False)
+col_format = "l" + "c" * len(final_df.columns)
+latex_table = final_df.to_latex(escape=False, column_format=col_format)
 
 # Insert dashed line after our models
 if len(our_models_sorted) > 0:
@@ -127,7 +131,7 @@ if len(our_models_sorted) > 0:
     # Account for: \begin{tabular}, \toprule, header, \midrule (4 lines before data rows)
     insert_index = 4 + len(our_models_sorted)
     if insert_index < len(lines):
-        lines.insert(insert_index, r'\hdashline')
+        lines.insert(insert_index, r'\midrule')
         latex_table = '\n'.join(lines)
 
 print(latex_table)

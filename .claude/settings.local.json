@@ -1,7 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "Bash(python -m py_compile:*)"
+      "Bash(python -m py_compile:*)",
+      "Bash(ls /local/home/bamorel/my_ecg_ptbxl_benchmarking/fonts/cm-unicode-0.7.0/*.ttf)"
     ],
     "deny": [],
     "ask": []
