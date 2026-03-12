@@ -37,5 +37,7 @@ new_code/outputs/
 **/wandb/*
 
 plot_examples/*
+*.ttf
+sample_*.png
 fonts/*
 new_code/visualisation/example_config/*
