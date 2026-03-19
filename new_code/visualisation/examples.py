@@ -8,6 +8,7 @@ Usage (from new_code/):
 
 import argparse
 import sys
+import tempfile
 from pathlib import Path
 
 import matplotlib.font_manager as fm
@@ -45,7 +46,6 @@ from utils.getters import (
 
 def _build_temp_config_path(cfg: dict) -> Path:
     """Write a temporary merged config YAML that ``get_data_set`` can read."""
-    import tempfile
     tmp = tempfile.NamedTemporaryFile(
         mode="w", suffix=".yaml", delete=False, prefix="example_cfg_"
     )
@@ -64,6 +64,53 @@ def _build_temp_config_path(cfg: dict) -> Path:
     yaml.dump(full, tmp)
     tmp.flush()
     return Path(tmp.name)
+
+
+def _decompose_noise_components(clean_np: np.ndarray, cfg: dict) -> dict:
+    """Return per-noise-type components at configured SNR levels.
+
+    For each noise type in the noise config (e.g. bw, ma, em, AWGN), creates
+    a standalone NoiseFactory with only that type enabled, applies it to the
+    clean signal, and extracts the noise via subtraction.
+
+    Returns dict mapping noise type name to a 1-D numpy array.
+    """
+    noise_cfg_path = cfg["noise_paths"]["config_path"]
+    with open(noise_cfg_path) as f:
+        noise_cfg = yaml.safe_load(f)
+
+    snr_dict = noise_cfg.get("SNR", {})
+    fs = cfg["simulation_params"]["sampling_rate"]
+    data_path = cfg["noise_paths"]["data_path"]
+
+    components = {}
+    for noise_type, snr_val in snr_dict.items():
+        if snr_val is None:
+            continue
+        single_cfg = {"SNR": {noise_type: snr_val}}
+        tmp = tempfile.NamedTemporaryFile(
+            mode="w", suffix=".yaml", delete=False,
+            prefix=f"noise_single_{noise_type}_",
+        )
+        yaml.dump(single_cfg, tmp)
+        tmp.flush()
+        tmp_path = tmp.name
+        tmp.close()
+        try:
+            factory = NoiseFactory(
+                data_path=data_path,
+                sampling_rate=fs,
+                config_path=tmp_path,
+                mode="eval",
+                seed=12345,
+            )
+            clean_3d = clean_np.reshape(1, 1, -1).copy()
+            noisy_3d = factory.add_noise(clean_3d, 0, 1, 2)
+            components[noise_type] = (noisy_3d.reshape(-1) - clean_np).astype(np.float32)
+        finally:
+            Path(tmp_path).unlink(missing_ok=True)
+
+    return components
 
 
 def _get_sampleset_name(cfg: dict) -> str:
@@ -185,6 +232,72 @@ def rank_samples(per_model_snrs: dict, lead_model: str):
 # Plotting
 # ---------------------------------------------------------------------------
 
+_LEAD_PLOT_RCPARAMS = {
+    'font.size': 36,
+    'axes.titlesize': 42,
+    'axes.labelsize': 39,
+    'xtick.labelsize': 33,
+    'ytick.labelsize': 33,
+    'legend.fontsize': 36,
+}
+
+
+def _plot_single_signal(t, signal_np, color, label, output_dir, filename,
+                        hide_axes=False):
+    """Plot a single signal in lead-plot style (8x6, 300 DPI, transparent)."""
+    plt.rcParams.update(_LEAD_PLOT_RCPARAMS)
+    fig, ax = plt.subplots(figsize=(8, 6))
+    ax.plot(t, signal_np, color=color, label=label, linewidth=2)
+    ax.axhline(0, linestyle=":", color="lightgreen", linewidth=1)
+    if hide_axes:
+        ax.set_xticklabels([])
+        ax.set_yticklabels([])
+        ax.set_xlabel("")
+        ax.set_ylabel("")
+    else:
+        ax.set_xlabel("Time (s)")
+        ax.set_ylabel("Amplitude")
+    ax.grid(True, alpha=0.3)
+    fig.tight_layout()
+
+    if output_dir is not None:
+        output_dir = Path(output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+        save_path = output_dir / filename
+        fig.savefig(save_path, dpi=300, bbox_inches="tight", transparent=True)
+        print(f"Saved {save_path}")
+        plt.close(fig)
+    else:
+        plt.show()
+
+
+def plot_signal_decomposition(sample_idx, clean_np, noisy_np, cfg, output_dir=None):
+    """Save clean-alone, noisy-alone, and per-noise-type plots for a sample."""
+    fs = cfg["simulation_params"]["sampling_rate"]
+    t = np.arange(len(clean_np)) / fs
+
+    _plot_single_signal(
+        t, clean_np, color="green", label="Clean",
+        output_dir=output_dir,
+        filename=f"sample_{sample_idx}_clean.png",
+    )
+    _plot_single_signal(
+        t, noisy_np, color="#808080", label="Noisy input",
+        output_dir=output_dir,
+        filename=f"sample_{sample_idx}_noisy.png",
+    )
+
+    components = _decompose_noise_components(clean_np, cfg)
+    for noise_type, noise_signal in components.items():
+        _plot_single_signal(
+            t, noise_signal, color="#808080",
+            label=f"{noise_type} noise",
+            output_dir=output_dir,
+            filename=f"sample_{sample_idx}_noise_{noise_type}.png",
+            hide_axes=True,
+        )
+
+
 @torch.no_grad()
 def _predict_single(model, noisy_tensor, device, is_stage_2, stage1_model):
     noisy = noisy_tensor.unsqueeze(0).to(device)
@@ -199,7 +312,8 @@ def plot_example(
     idx,
     ranked_idx,
     min_advantage,
-    eval_dataset,
+    noisy,
+    clean,
     models_info,
     per_model_snrs,
     per_model_rmses,
@@ -209,10 +323,9 @@ def plot_example(
 ):
     """Plot a single sample (by rank index) with all model predictions."""
     sample_idx = ranked_idx[idx]
-    noisy, clean = eval_dataset[sample_idx]
 
-    clean_np = clean.reshape(-1).numpy()
-    noisy_np = noisy.reshape(-1).numpy()
+    clean_np = clean.reshape(-1).numpy() if torch.is_tensor(clean) else clean.reshape(-1)
+    noisy_np = noisy.reshape(-1).numpy() if torch.is_tensor(noisy) else noisy.reshape(-1)
 
     fs = cfg["simulation_params"]["sampling_rate"]
     t = np.arange(len(clean_np)) / fs
@@ -281,7 +394,8 @@ def plot_lead_example(
     idx,
     ranked_idx,
     min_advantage,
-    eval_dataset,
+    noisy,
+    clean,
     lead_info,
     per_model_snrs,
     per_model_rmses,
@@ -294,10 +408,9 @@ def plot_lead_example(
     Uses noise_study-style proportions (8x6) and font sizes.
     """
     sample_idx = ranked_idx[idx]
-    noisy, clean = eval_dataset[sample_idx]
 
-    clean_np = clean.reshape(-1).numpy()
-    noisy_np = noisy.reshape(-1).numpy()
+    clean_np = clean.reshape(-1).numpy() if torch.is_tensor(clean) else clean.reshape(-1)
+    noisy_np = noisy.reshape(-1).numpy() if torch.is_tensor(noisy) else noisy.reshape(-1)
 
     fs = cfg["simulation_params"]["sampling_rate"]
     t = np.arange(len(clean_np)) / fs
@@ -313,14 +426,7 @@ def plot_lead_example(
     rmse_val = per_model_rmses[lead_name][sample_idx]
     snr_val = per_model_snrs[lead_name][sample_idx]
 
-    plt.rcParams.update({
-        'font.size': 36,
-        'axes.titlesize': 42,
-        'axes.labelsize': 39,
-        'xtick.labelsize': 33,
-        'ytick.labelsize': 33,
-        'legend.fontsize': 36,
-    })
+    plt.rcParams.update(_LEAD_PLOT_RCPARAMS)
 
     fig, ax = plt.subplots(figsize=(8, 6))
     ax.plot(t, noisy_np, color="#808080", label="Noisy input", linewidth=2)
@@ -338,7 +444,7 @@ def plot_lead_example(
     if output_dir is not None:
         output_dir = Path(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
-        save_path = output_dir / f"sample_{sample_idx}_lead.png"
+        save_path = output_dir / f"sample_{sample_idx}_lead_{lead_info['name']}.png"
         fig.savefig(save_path, dpi=300, bbox_inches="tight", transparent=True)
         print(f"Saved {save_path}")
         plt.close(fig)
@@ -419,9 +525,17 @@ def main():
 
     # --- Rank samples ---
     lead_model = cfg["lead_model"]
+    lead_plot_models = cfg.get("lead_plot_models", [lead_model])
+
     assert lead_model in per_model_snrs, (
         f"lead_model '{lead_model}' not found in model names: {list(per_model_snrs)}"
     )
+    for lm in lead_plot_models:
+        assert lm in per_model_snrs, (
+            f"lead_plot_models entry '{lm}' not found in model names: "
+            f"{list(per_model_snrs)}"
+        )
+
     ranked_idx, min_advantage = rank_samples(per_model_snrs, lead_model)
 
     # --- Print or plot ---
@@ -448,20 +562,35 @@ def main():
         # Output folder: visualisation/example_config/<config_stem>/
         config_stem = Path(args.config).stem
         output_dir = Path(args.config).parent / config_stem
-        lead_info = next(m for m in models_info if m["name"] == lead_model)
         for rank_idx in args.plot:
+            # Fetch signals once per sample for consistency across all plots
+            sample_idx = ranked_idx[rank_idx]
+            noisy, clean = eval_dataset[sample_idx]
+
             plot_example(
                 rank_idx, ranked_idx, min_advantage,
-                eval_dataset, models_info,
+                noisy, clean, models_info,
                 per_model_snrs, per_model_rmses,
                 cfg, device,
                 output_dir=output_dir,
             )
-            plot_lead_example(
-                rank_idx, ranked_idx, min_advantage,
-                eval_dataset, lead_info,
-                per_model_snrs, per_model_rmses,
-                cfg, device,
+
+            # Lead plots for each configured model
+            for lm_name in lead_plot_models:
+                lm_info = next(m for m in models_info if m["name"] == lm_name)
+                plot_lead_example(
+                    rank_idx, ranked_idx, min_advantage,
+                    noisy, clean, lm_info,
+                    per_model_snrs, per_model_rmses,
+                    cfg, device,
+                    output_dir=output_dir,
+                )
+
+            # Signal decomposition plots (once per sample, model-independent)
+            clean_np = clean.reshape(-1).numpy() if torch.is_tensor(clean) else clean.reshape(-1)
+            noisy_np = noisy.reshape(-1).numpy() if torch.is_tensor(noisy) else noisy.reshape(-1)
+            plot_signal_decomposition(
+                sample_idx, clean_np, noisy_np, cfg,
                 output_dir=output_dir,
             )
 
