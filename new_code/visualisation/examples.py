@@ -452,6 +452,50 @@ def plot_lead_example(
         plt.show()
 
 
+def plot_lead_prediction_only_example(
+    idx,
+    ranked_idx,
+    noisy,
+    lead_info,
+    cfg,
+    device,
+    output_dir=None,
+):
+    """Single-panel lead plot with only the model prediction shown."""
+    sample_idx = ranked_idx[idx]
+
+    fs = cfg["simulation_params"]["sampling_rate"]
+
+    lead_name = lead_info["name"]
+    model = lead_info["model"]
+    is_stage_2 = lead_info["is_stage_2"]
+    stage1_model = lead_info["stage1_model"]
+
+    denoised = _predict_single(model, noisy, device, is_stage_2, stage1_model)
+    t = np.arange(len(denoised)) / fs
+    color = COLOR_MAP.get(lead_name, "#333333")
+
+    plt.rcParams.update(_LEAD_PLOT_RCPARAMS)
+
+    fig, ax = plt.subplots(figsize=(8, 6))
+    ax.plot(t, denoised, color=color, linewidth=2)
+    ax.axhline(0, linestyle=":", color="lightgreen", linewidth=1)
+    ax.set_xlabel("Time (s)")
+    ax.set_ylabel("Amplitude")
+    ax.grid(True, alpha=0.3)
+    fig.tight_layout()
+
+    if output_dir is not None:
+        output_dir = Path(output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+        save_path = output_dir / f"sample_{sample_idx}_lead_{lead_name}_prediction_only.png"
+        fig.savefig(save_path, dpi=300, bbox_inches="tight", transparent=True)
+        print(f"Saved {save_path}")
+        plt.close(fig)
+    else:
+        plt.show()
+
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -582,6 +626,12 @@ def main():
                     rank_idx, ranked_idx, min_advantage,
                     noisy, clean, lm_info,
                     per_model_snrs, per_model_rmses,
+                    cfg, device,
+                    output_dir=output_dir,
+                )
+                plot_lead_prediction_only_example(
+                    rank_idx, ranked_idx,
+                    noisy, lm_info,
                     cfg, device,
                     output_dir=output_dir,
                 )
