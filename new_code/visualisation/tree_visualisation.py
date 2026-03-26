@@ -258,9 +258,9 @@ def build_tree(diag_to_subclass, diag_to_class, subclass_to_class, all_diag_clas
 MARKER_SIZE_LEAF = 672       # scatter marker size in points² (always round)
 MARKER_SIZE_SUBCLASS = 672
 MARKER_SIZE_CLASS = 672
-LEVEL_X = [0.10, 0.2, 0.50]  # x positions of the 3 levels (closer together)
+LEVEL_X = [0.05, 0.1, 0.36]  # x positions of the 3 levels
 Y_MARGIN = 0.02  # top/bottom margin
-TEXT_PAD = 0.025  # horizontal gap between marker centre and label
+TEXT_PAD = 0.015  # horizontal gap between marker centre and label
 
 
 def _count_leaves(tree):
@@ -409,8 +409,11 @@ def draw_tree(tree, title, save_path, is_delta=False):
         dc_y = np.mean(dc_leaf_ys)
         node_positions[("class", dc["name"])] = dc_y
 
-    # Draw connections and nodes (scatter markers are always round)
+    # ── Pass 1: draw markers, text, and col1→col2 lines ──────────
+    # (col2→col3 lines are deferred until text extents are measured)
     fontsize_label = max(18, min(22, 1000 / n_leaves))
+    sc_text_objects = {}   # sc_name -> Text artist
+    deferred_lines = []    # (sc_name, sc_y, d_x, d_y, alpha)
 
     for dc in tree:
         dc_x = LEVEL_X[0]
@@ -428,8 +431,8 @@ def draw_tree(tree, title, save_path, is_delta=False):
                 # Hide redundant child (single child with same name as parent subclass)
                 is_redundant = len(sc["children"]) == 1 and d["name"] == sc["name"]
                 node_alpha = 0.0 if is_redundant else 1.0
-                # Line: subclass -> diag
-                ax.plot([sc_x, d_x], [sc_y, d_y], color="#cccccc", linewidth=1.6, zorder=1, alpha=node_alpha)
+                # Defer col2→col3 line to pass 2
+                deferred_lines.append((sc["name"], sc_y, d_x, d_y, node_alpha))
 
                 # Draw diagnosis node (scatter = always round)
                 fill = _get_node_color(d["color"], _node_color_value(d), color_is_delta, vmin, vmax)
@@ -439,13 +442,14 @@ def draw_tree(tree, title, save_path, is_delta=False):
                     label = _format_label(d["name"], d["auc"], d["count"], is_delta)
                     ax.text(d_x + TEXT_PAD, d_y, label, va="center", fontsize=fontsize_label, zorder=4)
 
-            # Draw subclass node
+            # Draw subclass node + text (store Text artist for measurement)
             fill = _get_node_color(sc["color"], _node_color_value(sc), color_is_delta, vmin, vmax)
             ax.scatter(sc_x, sc_y, s=MARKER_SIZE_SUBCLASS, c=[fill], edgecolors="black",
                        linewidths=1.5, zorder=3, clip_on=False)
             label = _format_label(sc["name"], sc["auc"], sc["count"], is_delta)
-            ax.text(sc_x + TEXT_PAD, sc_y, label, va="center", fontsize=fontsize_label + 1,
-                    fontweight="bold", zorder=4)
+            txt = ax.text(sc_x + TEXT_PAD, sc_y, label, va="center", fontsize=fontsize_label + 1,
+                          fontweight="bold", zorder=4)
+            sc_text_objects[sc["name"]] = txt
 
         # Draw class node
         fill = _get_node_color(dc["color"], _node_color_value(dc), color_is_delta, vmin, vmax)
@@ -454,6 +458,16 @@ def draw_tree(tree, title, save_path, is_delta=False):
         label = _format_label(dc["name"], dc["auc"], dc["count"], is_delta)
         ax.text(dc_x - TEXT_PAD, dc_y, label, va="center", ha="right", fontsize=fontsize_label + 2,
                 fontweight="bold", zorder=4)
+
+    # ── Pass 2: measure subclass text extents, draw col2→col3 lines ──
+    fig.canvas.draw()
+    renderer = fig.canvas.get_renderer()
+    LINE_PAD = 0.008  # gap between text right edge and line start (data coords)
+    for sc_name, sc_y, d_x, d_y, alpha in deferred_lines:
+        txt = sc_text_objects[sc_name]
+        bbox_data = txt.get_window_extent(renderer).transformed(ax.transData.inverted())
+        line_start_x = bbox_data.x1 + LINE_PAD
+        ax.plot([line_start_x, d_x], [sc_y, d_y], color="#cccccc", linewidth=1.6, zorder=1, alpha=alpha)
 
     # Add a colorbar legend for delta / hybrid trees
     if color_is_delta:
@@ -479,7 +493,7 @@ def draw_tree(tree, title, save_path, is_delta=False):
         norm = Normalize(vmin=vmin, vmax=vmax)
 
         # Place colorbar at the bottom of the figure
-        cbar_ax = fig.add_axes([0.25, -0.02, 0.5, 0.012])
+        cbar_ax = fig.add_axes([0.05, -0.02, 0.5, 0.012])
         sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
         sm.set_array([])
         cbar = fig.colorbar(sm, cax=cbar_ax, orientation="horizontal")

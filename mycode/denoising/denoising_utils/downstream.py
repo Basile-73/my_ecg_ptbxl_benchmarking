@@ -130,7 +130,7 @@ def roc_by_class(y_val:np.ndarray, y_pred:np.ndarray, mlb:MultiLabelBinarizer, n
     return ci_df.to_dict(orient='records')
 
 
-def plot_reliability_diagram(logits_dict, y_true, temperature, output_folder, clf_name, n_bins=15):
+def plot_reliability_diagram(logits_dict, y_true, temperatures, output_folder, clf_name, n_bins=15):
     """
     Plot reliability diagrams comparing calibration before/after temperature scaling.
 
@@ -140,7 +140,7 @@ def plot_reliability_diagram(logits_dict, y_true, temperature, output_folder, cl
     Args:
         logits_dict: Dict mapping condition name -> raw logits array (n_samples, n_classes)
         y_true: Binary ground truth labels (n_samples, n_classes)
-        temperature: Temperature scalar learned on clean data
+        temperatures: Dict mapping condition name -> temperature scalar
         output_folder: Path to save the plot
         clf_name: Classifier name (for title and filename)
         n_bins: Number of bins for the reliability diagram
@@ -149,8 +149,9 @@ def plot_reliability_diagram(logits_dict, y_true, temperature, output_folder, cl
     fig, axes = plt.subplots(n_conditions, 2, figsize=(10, 3 * n_conditions), squeeze=False)
 
     for row, (name, logits) in enumerate(logits_dict.items()):
+        condition_T = temperatures[name]
         for col, (label, T) in enumerate([('Before calibration (T=1)', 1.0),
-                                           (f'After calibration (T={temperature:.2f})', temperature)]):
+                                           (f'After calibration (T={condition_T:.2f})', condition_T)]):
             ax = axes[row, col]
 
             # Convert logits to probabilities
