@@ -34,12 +34,12 @@ plt.rcParams["font.family"] = "CMU Serif"
 SCRIPT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_DIR.parent.parent
 
-RESULTS_CSV = REPO_ROOT / "mycode/denoising/output/report_strong_ls/downstream_results/exp0/per_class_roc_results_exp0.csv"
+RESULTS_CSV = REPO_ROOT / "mycode/denoising/output/report_strong_8_ls/downstream_results/exp0/per_class_roc_results_exp0.csv"
 SCP_STATEMENTS = REPO_ROOT / "data/physionet.org/files/ptb-xl/1.0.3/scp_statements.csv"
 Y_TEST_PATH = REPO_ROOT / "new_code/classification/output2/exp0/data/y_test.npy"
 MLB_PATH = REPO_ROOT / "new_code/classification/output2/exp0/data/mlb.pkl"
 
-OUTPUT_DIR = REPO_ROOT / "new_code/visualisation/output/trees/report_strong"
+OUTPUT_DIR = REPO_ROOT / "new_code/visualisation/output/trees/report_strong_8_ls_lf"
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 OMIT_TITLE = True
@@ -280,7 +280,8 @@ def _format_label(name, auc, count, is_delta=False):
         auc_str = f"[{auc:+.3f}]"
     else:
         auc_str = f"[{auc:.3f}]"
-    return f"{auc_str} {name} ({count})"
+    name_display = name.replace("LAFB/LPFB", "LAFB/\nLPFB")
+    return f"{auc_str} {name_display} ({count})"
 
 
 def _log_intensity(value, threshold=0.001):
@@ -382,7 +383,7 @@ def draw_tree(tree, title, save_path, is_delta=False):
     ax.set_ylim(0, 1)
     ax.axis("off")
     if not OMIT_TITLE:
-        ax.set_title(title, fontsize=28, fontweight="bold", pad=20)
+        ax.set_title(title, fontsize=37, fontweight="bold", pad=20)
 
     # Layout: assign y positions bottom-up for leaves, then propagate to parents
     y_step = (1 - 2 * Y_MARGIN) / max(n_leaves - 1, 1)
@@ -411,7 +412,7 @@ def draw_tree(tree, title, save_path, is_delta=False):
 
     # ── Pass 1: draw markers, text, and col1→col2 lines ──────────
     # (col2→col3 lines are deferred until text extents are measured)
-    fontsize_label = max(18, min(22, 1000 / n_leaves))
+    fontsize_label = max(24, min(29, 1320 / n_leaves))
     sc_text_objects = {}   # sc_name -> Text artist
     deferred_lines = []    # (sc_name, sc_y, d_x, d_y, alpha)
 

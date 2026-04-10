@@ -277,12 +277,12 @@ def plot_signal_decomposition(sample_idx, clean_np, noisy_np, cfg, output_dir=No
     t = np.arange(len(clean_np)) / fs
 
     _plot_single_signal(
-        t, clean_np, color="green", label="Clean",
+        t, clean_np, color="#ABABAB", label="Clean",
         output_dir=output_dir,
         filename=f"sample_{sample_idx}_clean.png",
     )
     _plot_single_signal(
-        t, noisy_np, color="#808080", label="Noisy input",
+        t, noisy_np, color=COLOR_MAP["noisy_input"], label="Noisy input",
         output_dir=output_dir,
         filename=f"sample_{sample_idx}_noisy.png",
     )
@@ -429,8 +429,8 @@ def plot_lead_example(
     plt.rcParams.update(_LEAD_PLOT_RCPARAMS)
 
     fig, ax = plt.subplots(figsize=(8, 6))
-    ax.plot(t, noisy_np, color="#808080", label="Noisy input", linewidth=2)
-    ax.plot(t, clean_np, color="green", label="Clean", linewidth=2)
+    ax.plot(t, noisy_np, color=COLOR_MAP["noisy_input"], label="Noisy input", linewidth=2)
+    ax.plot(t, clean_np, color="#ABABAB", label="Clean", linewidth=2)
     ax.plot(
         t, denoised, color=color, linewidth=2,
         label=f"{display_name}  (RMSE={rmse_val:.4f}, SNR={snr_val:.1f} dB)",
