@@ -8,7 +8,7 @@ from new_code.utils.getters import get_model
 from new_code.visualisation.maps import COLOR_MAP, OUR_MODELS, NAME_MAP, EXCLUDE_MODELS, CLASSIFICATION_MODEL_NAMES, CLASSIFICATION_MODEL_NAMES, plot_font_sizes
 
 classifier = 'fastai_inception1d'
-df = pd.read_csv('output/report_strong_ls/downstream_results/exp1.1.1/per_class_roc_results_exp1.1.1.csv')
+df = pd.read_csv('output/report_strong_8_ls/downstream_results/exp1.1.1/per_class_roc_results_exp1.1.1.csv')
 df_raw = df
 df = df[df['classifier']==classifier]
 

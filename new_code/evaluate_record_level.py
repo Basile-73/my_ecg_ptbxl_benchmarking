@@ -292,14 +292,24 @@ def plot_comparison(results_1, results_2, model_name_1, model_name_2,
                   fontweight="bold")
     ax.set_title("Record-Level SNR", fontsize=SCALED_FONT_SIZES["title"],
                  fontweight="bold")
-    ax.legend(fontsize=SCALED_FONT_SIZES["legend"])
+    legend = ax.legend(fontsize=SCALED_FONT_SIZES["title"] * 0.95)
     ax.tick_params(axis="both", labelsize=SCALED_FONT_SIZES["ticks"])
     ax.grid(True, alpha=0.3)
 
     plt.tight_layout()
+
+    # Save with legend
     plt.savefig(output_path, dpi=300, bbox_inches="tight")
+
+    # Save without legend
+    legend.remove()
+    stem, suffix = os.path.splitext(output_path)
+    no_legend_path = f"{stem}_no_legend{suffix}"
+    plt.savefig(no_legend_path, dpi=300, bbox_inches="tight")
+
     plt.close()
     print(f"Plot saved to {output_path}")
+    print(f"Plot saved to {no_legend_path}")
 
 
 def save_results_csv(results_1, results_2, label_1, label_2, sampling_rate, output_path):

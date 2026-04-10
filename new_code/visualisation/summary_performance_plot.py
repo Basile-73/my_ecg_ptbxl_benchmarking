@@ -1,11 +1,39 @@
 import pandas as pd
 from pathlib import Path
 import matplotlib.pyplot as plt
+import matplotlib.font_manager as fm
 import numpy as np
+import seaborn as sns
+
+# Register CMU Serif font
+from pathlib import Path as _Path
+def _find_repo_root():
+    """Find repo root by searching upward from __file__ or cwd for fonts/."""
+    candidates = []
+    try:
+        candidates.append(_Path(__file__).resolve().parent)
+    except (NameError, OSError):
+        pass
+    candidates.append(_Path.cwd())
+    for start in candidates:
+        p = start
+        while p != p.parent:
+            if (p / "fonts" / "cm-unicode-0.7.0").is_dir():
+                return p
+            p = p.parent
+    return _Path.cwd()
+_REPO_ROOT = _find_repo_root()
+_FONT_DIR = _REPO_ROOT / "fonts" / "cm-unicode-0.7.0"
+for _ttf in _FONT_DIR.glob("*.ttf"):
+    fm.fontManager.addfont(str(_ttf))
+plt.rcParams["font.family"] = "CMU Serif"
 
 from maps import COLOR_MAP, NAME_MAP, plot_font_sizes
 
-choice = 'ptb-xl' # 'european', 'sinus', 'ptb-xl', 'synthetic'
+font_scale = 1.2705
+scaled_font_sizes = {key: plot_font_sizes[key] * font_scale for key in plot_font_sizes}
+
+choice = 'synthetic' # 'european', 'sinus', 'ptb-xl', 'synthetic'
 legend = True
 save_figure = True
 save_table = True
@@ -101,8 +129,11 @@ out = all_results
 # Compute Figure
 ################################################################################
 
-fig, axes = plt.subplots(1, 2, figsize=(len(models)*1, 5))
-#fig.suptitle("Model Performance", fontsize=plot_font_sizes['title'], fontweight="bold")
+sns.set_style("whitegrid")
+plt.rcParams["font.family"] = "CMU Serif"
+
+fig, axes = plt.subplots(1, 2, figsize=(len(models)*1, 5.5))
+#fig.suptitle("Model Performance", fontsize=scaled_font_sizes['title'], fontweight="bold")
 
 handles = []
 
@@ -133,7 +164,7 @@ for ax, metric in zip(axes, ["RMSE", "SNR"]):
             i,
             means[i] + yhigh[i] + text_pad,
             f"{means[i]:.3f}" if metric == "RMSE" else f"{means[i]:.2f}",
-            ha="center", va="bottom", fontsize=plot_font_sizes['value_labels'], rotation=90
+            ha="center", va="bottom", fontsize=scaled_font_sizes['value_labels'], rotation=90
         )
 
     data_top = (means + yhigh).max()
@@ -148,11 +179,11 @@ for ax, metric in zip(axes, ["RMSE", "SNR"]):
     ax.axhline(y=best_value, color='grey', linestyle=':', linewidth=2, alpha=0.7, label='Best')
 
     #ax.set_title(f"{metric} (95% CI)", fontweight="bold")
-    ax.set_ylabel(metric, fontweight="bold", fontsize=plot_font_sizes['axis_labels'])
+    ax.set_ylabel(metric, fontweight="bold", fontsize=scaled_font_sizes['axis_labels'])
     ax.set_xticks(range(len(models)))
     #ax.set_xticklabels(models, rotation=90)
     ax.set_xticks([])
-    ax.tick_params(axis='both', which='major', labelsize=plot_font_sizes['ticks'])
+    ax.tick_params(axis='both', which='major', labelsize=scaled_font_sizes['ticks'])
     ax.grid(True, axis="y", alpha=0.3)
 
 # Create legend labels with "(ours)" for mamba models
@@ -161,8 +192,8 @@ legend_labels = [f"{NAME_MAP.get(m, m)} (ours)" if 'mamba' in m and 'drnet' not 
                  NAME_MAP.get(m, m) for m in models]
 
 if legend == True:
-    fig.legend(handles, legend_labels, loc="lower center", bbox_to_anchor=(0.54, -0.1), ncol=len(models)//2, frameon=True, fontsize=plot_font_sizes['legend'])
-plt.tight_layout(rect=[0, 0.05, 1, 1])
+    fig.legend(handles, legend_labels, loc="lower center", bbox_to_anchor=(0.54, -0.2), ncol=len(models)//2, frameon=True, fontsize=scaled_font_sizes['legend'])
+plt.tight_layout(rect=[0, 0.15, 1, 1])
 
 if save_figure:
     save_path = Path(f'../outputs/plots/{choice}_{legend}.png')
