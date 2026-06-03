@@ -327,7 +327,7 @@ def validate_lead_specific_configs(model_configs):
 
 def evaluate_downstream(config_path='code/denoising/configs/denoising_config.yaml', base_exp='exp0',
                        classification_sampling_rate=500, classifier_names=None, compute_per_class=False,
-                       show_legend=True, large_font=False):
+                       show_legend=True, large_font=False, narrow=False):
     """
     Main evaluation function.
 
@@ -483,7 +483,7 @@ def evaluate_downstream(config_path='code/denoising/configs/denoising_config.yam
 
     denoising_models = {}
     stage1_models_cache = {}  # Cache loaded Stage1 models for Stage2 use
-    model_configs = config['models']
+    model_configs = config.get('models') or []
     validate_lead_specific_configs(model_configs)
 
     for model_config in model_configs:
@@ -886,7 +886,7 @@ def evaluate_downstream(config_path='code/denoising/configs/denoising_config.yam
     print(results_df.to_string(index=False))
 
     # Create visualizations
-    plot_downstream_results(results_df, results_folder, show_legend=show_legend, large_font=large_font)
+    plot_downstream_results(results_df, results_folder, show_legend=show_legend, large_font=large_font, narrow=narrow)
 
     # Create reliability diagrams for calibration assessment
     print("\n" + "-"*80)
@@ -912,30 +912,30 @@ def evaluate_downstream(config_path='code/denoising/configs/denoising_config.yam
     print(f"   Results saved to: {results_folder}")
 
 
-def plot_downstream_results(results_df, output_folder, show_legend=True, large_font=False):
+def plot_downstream_results(results_df, output_folder, show_legend=True, large_font=False, narrow=False):
     """Create visualizations of downstream classification results.
 
     Creates PNG files for both AUC and BCE metrics per classification model.
     """
     # Generate AUC plots
-    plot_metric_bars(results_df, output_folder, metric='auc', show_legend=show_legend, large_font=large_font)
+    plot_metric_bars(results_df, output_folder, metric='auc', show_legend=show_legend, large_font=large_font, narrow=narrow)
 
     # Generate BCE plots
-    plot_metric_bars(results_df, output_folder, metric='bce', show_legend=show_legend, large_font=large_font)
+    plot_metric_bars(results_df, output_folder, metric='bce', show_legend=show_legend, large_font=large_font, narrow=narrow)
 
     # Generate Brier score plots
-    plot_metric_bars(results_df, output_folder, metric='brier', show_legend=show_legend, large_font=large_font)
+    plot_metric_bars(results_df, output_folder, metric='brier', show_legend=show_legend, large_font=large_font, narrow=narrow)
 
     # Generate combined AUC+BCE plots
-    plot_metric_bars_combined(results_df, output_folder, show_legend=show_legend, large_font=large_font)
+    plot_metric_bars_combined(results_df, output_folder, show_legend=show_legend, large_font=large_font, narrow=narrow)
 
     # Create improvement heatmaps
-    create_improvement_heatmap(results_df, output_folder, metric='auc', large_font=large_font)
-    create_improvement_heatmap(results_df, output_folder, metric='bce', large_font=large_font)
-    create_improvement_heatmap(results_df, output_folder, metric='brier', large_font=large_font)
+    create_improvement_heatmap(results_df, output_folder, metric='auc', large_font=large_font, narrow=narrow)
+    create_improvement_heatmap(results_df, output_folder, metric='bce', large_font=large_font, narrow=narrow)
+    create_improvement_heatmap(results_df, output_folder, metric='brier', large_font=large_font, narrow=narrow)
 
 
-def plot_metric_bars(results_df, output_folder, metric='auc', show_legend=True, large_font=False):
+def plot_metric_bars(results_df, output_folder, metric='auc', show_legend=True, large_font=False, narrow=False):
     """Create bar plots for a specific metric (AUC or BCE).
 
     Creates one PNG file per classification model showing all denoising approaches.
@@ -968,7 +968,7 @@ def plot_metric_bars(results_df, output_folder, metric='auc', show_legend=True, 
 
     # Create one figure per classifier
     for clf_name in classifiers:
-        fig, ax = plt.subplots(figsize=(15, (len(results_df['denoising_model'])/len(results_df['classification_model'].unique())) * 1))
+        fig, ax = plt.subplots(figsize=(15 * (0.66 if narrow else 1), (len(results_df['denoising_model'])/len(results_df['classification_model'].unique())) * 1))
 
         # Filter data for this classifier
         clf_data = results_df[results_df['classification_model'] == clf_name].copy()
@@ -1164,7 +1164,7 @@ def plot_metric_bars(results_df, output_folder, metric='auc', show_legend=True, 
         print(f"✓ {metric.upper()} visualization saved to: {plot_path}")
 
 
-def plot_metric_bars_combined(results_df, output_folder, show_legend=True, large_font=False):
+def plot_metric_bars_combined(results_df, output_folder, show_legend=True, large_font=False, narrow=False):
     """Create combined bar plots showing both AUC and BCE metrics side by side.
 
     Creates one PNG file per classification model with two subplots.
@@ -1207,7 +1207,7 @@ def plot_metric_bars_combined(results_df, output_folder, show_legend=True, large
         n_models = len(denoise_models)
 
         # Create figure with two subplots side by side (squeezed horizontally)
-        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(9, n_models * 0.5), sharey=True)
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(9 * (0.66 if narrow else 1), n_models * 0.5), sharey=True)
 
         # Prepare display names and colors
         colors = []
@@ -1380,7 +1380,7 @@ def plot_metric_bars_combined(results_df, output_folder, show_legend=True, large
         print(f"✓ Combined AUC+BCE visualization saved to: {plot_path}")
 
 
-def create_improvement_heatmap(results_df, output_folder, metric='auc', large_font=False):
+def create_improvement_heatmap(results_df, output_folder, metric='auc', large_font=False, narrow=False):
     """Create heatmap showing metric improvements over noisy baseline.
 
     Args:
@@ -1389,7 +1389,14 @@ def create_improvement_heatmap(results_df, output_folder, metric='auc', large_fo
         metric: 'auc', 'bce', or 'brier'
     """
     _fs = 1.15 if large_font else 1
-    fig, ax = plt.subplots(figsize=(12, 8))
+
+    # Skip entirely if there are no denoising models to show improvements for
+    denoise_only = [m for m in results_df['denoising_model'].unique() if m not in ('clean', 'noisy')]
+    if not denoise_only:
+        print(f"⚠️  Skipping {metric} improvement heatmap: no denoising models in results")
+        return
+
+    fig, ax = plt.subplots(figsize=(12 * (0.66 if narrow else 1), 8))
 
     classifiers = sorted(results_df['classification_model'].unique())
 
@@ -1535,6 +1542,8 @@ Examples:
                        help='Omit legends from all plots')
     parser.add_argument('--large-font', action='store_true',
                        help='Increase all font sizes by 15%%')
+    parser.add_argument('--narrow', action='store_true',
+                       help='Make each plot narrower (66%% of original width); height unchanged')
     args = parser.parse_args()
 
     show_legend = not args.no_legend
@@ -1549,7 +1558,7 @@ Examples:
             sys.exit(1)
         print(f"Plot-only mode: loading results from {csv_path}")
         results_df = pd.read_csv(csv_path)
-        plot_downstream_results(results_df, results_folder, show_legend=show_legend, large_font=args.large_font)
+        plot_downstream_results(results_df, results_folder, show_legend=show_legend, large_font=args.large_font, narrow=args.narrow)
         print(f"\n✓ Plots regenerated in: {results_folder}")
         return
 
@@ -1567,7 +1576,8 @@ Examples:
         classifier_names=classifier_names,
         compute_per_class=args.per_class,
         show_legend=show_legend,
-        large_font=args.large_font
+        large_font=args.large_font,
+        narrow=args.narrow
     )
 
 

@@ -342,16 +342,18 @@ def plot_example(
 
     # --- First subplot: noisy + clean ---
     ax = axes[0]
-    ax.plot(t, noisy_np, color="#808080", label="Noisy input", linewidth=1.2)
-    ax.plot(t, clean_np, color="green", label="Clean", linewidth=1.6)
+    ax.plot(t, noisy_np, color="#808080", label="Noisy input", linewidth=2.4)
+    ax.plot(t, clean_np, color="black", label="Clean", linewidth=3.2)
     ax.axhline(0, linestyle=":", color="lightgreen", linewidth=1.0)
     ax.set_ylabel("Amplitude", fontsize=plot_font_sizes["axis_labels"])
-    ax.legend(fontsize=plot_font_sizes["legend"], loc="upper right")
     ax.set_title(
         f"Sample {sample_idx}  (rank {idx},  min SNR advantage = {min_advantage[sample_idx]:.2f} dB)",
         fontsize=plot_font_sizes["title"],
     )
     ax.tick_params(labelsize=plot_font_sizes["ticks"])
+
+    legend_handles = list(ax.get_lines()[:2])
+    legend_labels = ["Noisy input", "Clean"]
 
     # --- One subplot per model ---
     for i, entry in enumerate(models_info):
@@ -366,18 +368,30 @@ def plot_example(
         rmse_val = per_model_rmses[name][sample_idx]
         snr_val = per_model_snrs[name][sample_idx]
 
-        ax.plot(t, clean_np, color="green", linewidth=1.2, alpha=0.5, label="Clean")
-        ax.plot(
-            t, denoised, color=color, linewidth=1.6,
-            label=f"{display_name}  (RMSE={rmse_val:.4f}, SNR={snr_val:.1f} dB)",
+        ax.plot(t, clean_np, color="black", linewidth=2.4, alpha=0.5)
+        model_line, = ax.plot(
+            t, denoised, color=color, linewidth=3.2,
         )
         ax.axhline(0, linestyle=":", color="lightgreen", linewidth=1.0)
         ax.set_ylabel("Amplitude", fontsize=plot_font_sizes["axis_labels"])
-        ax.legend(fontsize=plot_font_sizes["legend"], loc="upper right")
         ax.tick_params(labelsize=plot_font_sizes["ticks"])
 
+        legend_handles.append(model_line)
+        legend_labels.append(
+            f"{display_name}  (RMSE={rmse_val:.4f}, SNR={snr_val:.1f} dB)"
+        )
+
     axes[-1].set_xlabel("Time (s)", fontsize=plot_font_sizes["axis_labels"])
-    plt.tight_layout()
+    plt.tight_layout(rect=[0, 0.08, 1, 1])
+    fig.legend(
+        legend_handles,
+        legend_labels,
+        fontsize=plot_font_sizes["legend"],
+        loc="lower center",
+        ncol=2,
+        frameon=False,
+        bbox_to_anchor=(0.5, 0.0),
+    )
 
     if output_dir is not None:
         output_dir = Path(output_dir)

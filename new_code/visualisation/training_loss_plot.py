@@ -3,6 +3,8 @@ import re
 import pandas as pd
 from pathlib import Path
 import matplotlib.font_manager as fm
+from matplotlib.font_manager import FontProperties
+from matplotlib.offsetbox import TextArea, HPacker, AnchoredOffsetbox
 import matplotlib.pyplot as plt
 
 from maps import COLOR_MAP, NAME_MAP, EXCLUDE_MODELS, plot_font_sizes
@@ -17,6 +19,9 @@ for _ttf in _FONT_DIR.glob("*.ttf"):
 plt.rcParams["font.family"] = "CMU Serif"
 
 font_sizes = {k: v * 1.872 for k, v in plot_font_sizes.items()}
+
+_BOLD_TITLE_FP = FontProperties(fname=str(_FONT_DIR / 'cmunbx.ttf'), size=font_sizes['title'])
+_REG_TITLE_FP  = FontProperties(fname=str(_FONT_DIR / 'cmunrm.ttf'), size=font_sizes['title'])
 
 DATASETS = [
     ('European ST-T', 'eu'),
@@ -82,7 +87,7 @@ def _lighten_color(hex_color, factor):
     return f'#{r:02x}{g:02x}{b:02x}'
 
 
-def _plot_cols(ax, df, cols, y_label, show_xlabel=True, show_ylabel=True, show_legend=True):
+def _plot_cols(ax, df, cols, y_label, show_xlabel=True, show_ylabel=True, show_legend=True, legend_ncols=1, legend_slice=None):
     cols = [c for c in cols if get_model_name(c) not in EXCLUDE_MODELS]
     for col in cols:
         model = get_model_name(col)
@@ -100,7 +105,13 @@ def _plot_cols(ax, df, cols, y_label, show_xlabel=True, show_ylabel=True, show_l
     ax.tick_params(axis='both', labelsize=font_sizes['ticks'])
     ax.grid(True, alpha=0.3)
     if show_legend:
-        ax.legend(fontsize=font_sizes['legend'])
+        if legend_slice is not None:
+            handles, labels = ax.get_legend_handles_labels()
+            start, stop = legend_slice
+            ax.legend(handles[start:stop], labels[start:stop],
+                      fontsize=font_sizes['legend'], ncol=legend_ncols)
+        else:
+            ax.legend(fontsize=font_sizes['legend'], ncol=legend_ncols)
 
 
 def _plot_length_cols(ax, df, cols, y_label):
@@ -187,6 +198,92 @@ def plot_stages(args):
         plt.tight_layout()
         _save(fig, output_dir / f'training_{prefix}.png', args.no_save)
         plt.show()
+
+    if not args.dataset:
+        _plot_stages_combined(DATASETS, _ROWS, output_dir, args.no_save)
+
+
+def _plot_stages_combined(datasets, rows, output_dir, no_save):
+    letters = ['A', 'B', 'C']
+    n_datasets = len(datasets)
+    plot_height = 5 * 0.75 * 0.9  # 25% then a further 10% reduction from per-dataset view
+    fig = plt.figure(
+        figsize=(14, plot_height * len(rows) * n_datasets),
+        constrained_layout=True,
+    )
+    subfigs = fig.subfigures(n_datasets, 1)
+
+    for i, ((dataset_label, prefix), letter) in enumerate(zip(datasets, letters)):
+        subfig = subfigs[i]
+        # Reserve top space via a placeholder suptitle, then overlay a mixed
+        # bold-prefix / regular-suffix title using HPacker.
+        subfig.suptitle(' ', fontproperties=_BOLD_TITLE_FP)
+        bold_part = TextArea(
+            f'{letter}.',
+            textprops=dict(fontproperties=_BOLD_TITLE_FP),
+        )
+        regular_part = TextArea(
+            f' {dataset_label}',
+            textprops=dict(fontproperties=_REG_TITLE_FP),
+        )
+        packed = HPacker(children=[bold_part, regular_part],
+                         pad=0, sep=0, align='baseline')
+        subfig.add_artist(AnchoredOffsetbox(
+            loc='upper left',
+            child=packed,
+            frameon=False,
+            pad=0,
+            borderpad=0,
+            bbox_to_anchor=(0.02, 0.995),
+            bbox_transform=subfig.transSubfigure,
+        ))
+
+        dfs = {
+            suffix: pd.read_csv(_DATA_DIR / f'{prefix}_{suffix}.csv')
+            for suffix, _ in rows
+        }
+
+        axes = subfig.subplots(len(rows), 2)
+        is_last_dataset = (i == n_datasets - 1)
+
+        for row, (suffix, y_label) in enumerate(rows):
+            df = dfs[suffix]
+            metric_cols = [
+                c for c in df.columns
+                if c != 'Step' and '__MIN' not in c and '__MAX' not in c
+            ]
+            non_drnet_cols = [c for c in metric_cols if 'drnet' not in get_model_name(c)]
+            drnet_cols     = [c for c in metric_cols if 'drnet' in get_model_name(c)]
+
+            for col_idx, (cols, title) in enumerate([
+                (non_drnet_cols, 'Stage 1 models'),
+                (drnet_cols,     'Stage 2 models (DRNET)'),
+            ]):
+                ax = axes[row][col_idx]
+                if i == 0 and col_idx == 0:
+                    show_legend = (row in (0, 1))
+                    legend_slice = (0, 3) if row == 0 else (3, 6)
+                elif i == 0 and col_idx == 1 and row == 0:
+                    show_legend = True
+                    legend_slice = None
+                else:
+                    show_legend = False
+                    legend_slice = None
+                _plot_cols(
+                    ax, df, cols, y_label,
+                    show_xlabel=(row == len(rows) - 1 and is_last_dataset),
+                    show_ylabel=(col_idx == 0),
+                    show_legend=show_legend,
+                    legend_slice=legend_slice,
+                )
+                if row == 0 and i == 0:
+                    ax.set_title(title, fontsize=font_sizes['title'], fontweight='bold')
+                if row == 0 and prefix == 'syn':
+                    bottom = -0.01 if col_idx == 0 else -0.001
+                    ax.set_ylim(bottom=bottom, top=0.4 if col_idx == 0 else 0.05)
+
+    _save(fig, output_dir / 'training_combined.png', no_save)
+    plt.show()
 
 
 def plot_compression(args):
